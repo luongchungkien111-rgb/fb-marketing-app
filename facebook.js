@@ -34,6 +34,10 @@ function getLoginDialogUrl({ appId, redirectUri, state }) {
     state,
     scope,
     response_type: 'code',
+    // Bat buoc Facebook hien lai man hinh xin quyen moi (vd pages_messaging vua
+    // them sau) ngay ca khi tai khoan da tung dong y truoc do - neu khong FB se
+    // tu dong bo qua man hinh nay va tra ve token voi quyen cu nhu cu.
+    auth_type: 'rerequest',
   });
   return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
 }
