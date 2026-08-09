@@ -7,10 +7,12 @@ const DB_FILE = path.join(__dirname, 'data', 'app.db.json');
 
 function load() {
   if (!fs.existsSync(DB_FILE)) {
-    return { pages: [], posts: [], nextPageId: 1, nextPostId: 1, conversations: [] };
+    return { pages: [], posts: [], nextPageId: 1, nextPostId: 1, conversations: [], tiktokAccounts: [], nextTiktokAccountId: 1 };
   }
   const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   if (!data.conversations) data.conversations = []; // file cu tao truoc khi co tinh nang Tin nhan
+  if (!data.tiktokAccounts) data.tiktokAccounts = []; // file cu tao truoc khi co tinh nang TikTok
+  if (!data.nextTiktokAccountId) data.nextTiktokAccountId = 1;
   return data;
 }
 
@@ -391,6 +393,76 @@ function isImagePathUsedByOtherPost(imagePath, excludePostId) {
   return data.posts.some((p) => p.id !== Number(excludePostId) && p.image_path === imagePath);
 }
 
+// ---------- TAI KHOAN TIKTOK ----------
+
+function listTiktokAccounts() {
+  const data = load();
+  return data.tiktokAccounts
+    .slice()
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .map(({ access_token, refresh_token, ...rest }) => rest); // khong tra token ve client
+}
+
+function getTiktokAccountById(id) {
+  const data = load();
+  const acc = data.tiktokAccounts.find((a) => a.id === Number(id));
+  if (!acc) return acc;
+  return { ...acc, access_token: decrypt(acc.access_token), refresh_token: decrypt(acc.refresh_token) };
+}
+
+/**
+ * Them 1 tai khoan TikTok moi ket noi, hoac cap nhat token neu open_id da
+ * ton tai (vd nguoi dung ket noi lai sau khi refresh token het han).
+ */
+function upsertTiktokAccount({ open_id, display_name, avatar_url, access_token, refresh_token, expires_at, refresh_expires_at }) {
+  const data = load();
+  const existing = data.tiktokAccounts.find((a) => a.open_id === open_id);
+  if (existing) {
+    Object.assign(existing, {
+      display_name,
+      avatar_url,
+      access_token: encrypt(access_token),
+      refresh_token: encrypt(refresh_token),
+      expires_at,
+      refresh_expires_at,
+    });
+    save(data);
+    return existing;
+  }
+  const acc = {
+    id: data.nextTiktokAccountId++,
+    open_id,
+    display_name,
+    avatar_url,
+    access_token: encrypt(access_token),
+    refresh_token: encrypt(refresh_token),
+    expires_at,
+    refresh_expires_at,
+    created_at: nowIso(),
+  };
+  data.tiktokAccounts.push(acc);
+  save(data);
+  return acc;
+}
+
+function updateTiktokAccountTokens(id, { access_token, refresh_token, expires_at, refresh_expires_at }) {
+  const data = load();
+  const acc = data.tiktokAccounts.find((a) => a.id === Number(id));
+  if (!acc) return null;
+  acc.access_token = encrypt(access_token);
+  acc.refresh_token = encrypt(refresh_token);
+  acc.expires_at = expires_at;
+  acc.refresh_expires_at = refresh_expires_at;
+  save(data);
+  return acc;
+}
+
+function deleteTiktokAccount(id) {
+  const data = load();
+  data.tiktokAccounts = data.tiktokAccounts.filter((a) => a.id !== Number(id));
+  save(data);
+}
+
 // ---------- BINH LUAN DA TRA LOI (chong tra loi trung, dung cho auto-reply AI) ----------
 
 function isCommentReplied(commentId) {
@@ -435,4 +507,9 @@ module.exports = {
   isImagePathUsedByOtherPost,
   isCommentReplied,
   markCommentReplied,
+  listTiktokAccounts,
+  getTiktokAccountById,
+  upsertTiktokAccount,
+  updateTiktokAccountTokens,
+  deleteTiktokAccount,
 };
