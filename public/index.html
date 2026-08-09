@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Phần mềm Marketing Facebook</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">📣</span>
+        <div>
+          <div class="brand-title">FB Marketing</div>
+          <div class="brand-sub">Quản lý Fanpage</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="dashboard" data-title="📊 Tổng quan"><span class="nav-icon">📊</span><span>Tổng quan</span></button>
+        <button class="nav-item" data-view="pages" data-title="📄 Fanpage"><span class="nav-icon">📄</span><span>Fanpage</span></button>
+        <button class="nav-item" data-view="compose" data-title="✍️ Soạn bài viết"><span class="nav-icon">✍️</span><span>Soạn bài</span></button>
+        <button class="nav-item" data-view="import" data-title="📥 Nhập lịch hàng loạt"><span class="nav-icon">📥</span><span>Nhập CSV</span></button>
+        <button class="nav-item" data-view="posts" data-title="📋 Danh sách bài viết"><span class="nav-icon">📋</span><span>Bài viết</span></button>
+        <button class="nav-item" data-view="inbox" data-title="💬 Tin nhắn (Inbox chung)"><span class="nav-icon">💬</span><span>Tin nhắn</span><span id="inboxUnreadBadge" class="nav-badge" style="display:none">0</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        ⚠️ Chỉ hỗ trợ đăng tự động lên <strong>Fanpage</strong> — Group không có API (giới hạn từ Meta).
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <header class="topbar">
+        <h1 id="viewTitle">📊 Tổng quan</h1>
+        <div id="alertBanner" class="alert-banner" style="display:none"></div>
+      </header>
+
+      <main>
+        <!-- ===== DASHBOARD ===== -->
+        <section class="view active" data-view="dashboard">
+          <div class="card">
+            <div id="dashboardSummary" class="dashboard-summary"></div>
+            <div class="table-wrap">
+              <table id="dashboardTable">
+                <thead>
+                  <tr><th>Page</th><th>Nhóm</th><th>Tổng bài</th><th>Đã đăng</th><th>Chờ</th><th>Lỗi</th><th>👍</th><th>💬</th><th>🔁</th><th>Bài gần nhất</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== PAGES ===== -->
+        <section class="view" data-view="pages">
+          <div class="card">
+            <a href="/auth/facebook" class="fb-login-btn">🔵 Đăng nhập bằng Facebook — tự động lấy tất cả Page</a>
+            <p class="hint">Đăng nhập 1 lần, phần mềm tự thêm/cập nhật toàn bộ Fanpage bạn quản lý. Hoặc thêm thủ công từng Page bên dưới:</p>
+            <form id="pageForm" class="row">
+              <input type="text" id="pageId" placeholder="Facebook Page ID" required />
+              <input type="text" id="pageToken" placeholder="Page Access Token" required />
+              <button type="submit" class="primary">+ Thêm Page</button>
+            </form>
+          </div>
+          <div class="card">
+            <h2>Quản lý nhóm</h2>
+            <p class="hint">Đổi tên hoặc xoá nhóm — xoá nhóm chỉ bỏ phân loại, không xoá Page. Muốn tạo nhóm mới: chọn "+ Nhóm mới..." ở ô nhóm của 1 Page bất kỳ bên dưới.</p>
+            <ul id="groupManagerList" class="list"></ul>
+          </div>
+
+          <div class="card">
+            <div class="row" style="justify-content:space-between">
+              <h2 style="margin:0">Danh sách Page đã kết nối</h2>
+              <label class="schedule-label">Lọc theo nhóm:
+                <select id="groupFilter"><option value="">Tất cả</option></select>
+              </label>
+            </div>
+            <ul id="pageList" class="list"></ul>
+          </div>
+        </section>
+
+        <!-- ===== PAGE PREVIEW (mo tu Danh sach Page, khong nam trong sidebar) ===== -->
+        <section class="view" data-view="page-detail">
+          <button type="button" id="btnBackToPages" class="back-btn">← Quay lại danh sách Page</button>
+          <div id="pagePreviewContent" class="card">Đang tải...</div>
+        </section>
+
+        <!-- ===== COMPOSE ===== -->
+        <section class="view" data-view="compose">
+          <div class="card">
+            <form id="postForm" class="stack">
+              <div class="page-picker">
+                <div class="page-picker-header">
+                  <span>Chọn Page để đăng (được chọn nhiều Page cùng lúc):</span>
+                  <label class="select-all"><input type="checkbox" id="selectAllPages" /> Chọn tất cả</label>
+                </div>
+                <div id="postPageList" class="page-checkbox-list"></div>
+              </div>
+              <textarea id="postContent" rows="5" placeholder="Nội dung bài viết..."></textarea>
+              <input type="file" id="postImage" accept="image/*" />
+              <div class="row">
+                <label class="schedule-label">Lên lịch lúc:
+                  <input type="datetime-local" id="postSchedule" />
+                </label>
+                <button type="button" id="btnScheduleNow">📆 Lên lịch</button>
+                <button type="button" id="btnPublishNow" class="primary">🚀 Đăng ngay</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <!-- ===== IMPORT CSV ===== -->
+        <section class="view" data-view="import">
+          <div class="card">
+            <p class="hint">Cột file khi <strong>nhập</strong>: <code>page_row_id,date,time,content,image_url,video_url,image_path</code> (3 cột cuối để trống nếu chỉ đăng chữ — <code>image_path</code> là đường dẫn file ảnh có sẵn trên máy chạy phần mềm này). date dạng YYYY-MM-DD, time dạng HH:MM (giờ Việt Nam).</p>
+            <div class="row">
+              <input type="file" id="csvFile" accept=".csv" />
+              <button type="button" id="btnPreviewCsv">👁️ Xem trước</button>
+              <button type="button" id="btnCommitCsv" class="primary" disabled>✅ Xác nhận, thêm vào lịch</button>
+            </div>
+            <div id="csvResult"></div>
+          </div>
+          <div class="card">
+            <h2>Xuất trạng thái</h2>
+            <p class="hint">Xem bài nào đã đăng / chưa đăng + link bài thật trên Facebook — tải file trạng thái mới nhất:</p>
+            <a href="/api/posts/export" class="fb-login-btn" style="background:var(--muted)" download>⬇️ Xuất file trạng thái (CSV)</a>
+          </div>
+        </section>
+
+        <!-- ===== POSTS ===== -->
+        <section class="view" data-view="posts">
+          <div class="card">
+            <div class="tabs">
+              <button class="tab active" data-status="">Tất cả</button>
+              <button class="tab" data-status="pending">Đang chờ</button>
+              <button class="tab" data-status="published">Đã đăng</button>
+              <button class="tab" data-status="failed">Lỗi</button>
+              <button type="button" id="btnRefreshInsights" style="margin-left:auto">🔄 Cập nhật lượt tương tác</button>
+            </div>
+            <div class="table-wrap tall">
+              <table id="postsTable">
+                <thead>
+                  <tr><th>Page</th><th>Nội dung</th><th>Ảnh</th><th>Thời gian</th><th>Trạng thái</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== INBOX (TIN NHAN CHUNG NHIEU PAGE) ===== -->
+        <section class="view" data-view="inbox">
+          <div class="card" style="padding:0;overflow:hidden">
+            <div class="inbox-shell">
+              <div class="inbox-list-pane">
+                <div class="inbox-list-header hint" style="margin:0;padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <span>Hội thoại gần đây</span>
+                  <button type="button" id="btnSubscribeWebhook" title="Chạy 1 lần sau khi đã cấu hình Webhooks trên Meta App Dashboard" style="font-size:11px;padding:4px 8px">🔔 Đăng ký nhận tin</button>
+                </div>
+                <ul id="conversationList" class="conv-list"></ul>
+              </div>
+              <div class="inbox-thread-pane">
+                <div id="threadEmpty" class="hint" style="padding:40px;text-align:center">👈 Chọn 1 hội thoại bên trái để xem tin nhắn.</div>
+                <div id="threadBox" style="display:none;flex-direction:column;height:100%">
+                  <div class="thread-header">
+                    <div>
+                      <strong id="threadTitle"></strong>
+                      <div class="hint" id="threadSubtitle" style="margin:2px 0 0"></div>
+                    </div>
+                    <label class="ai-toggle">
+                      <input type="checkbox" id="threadAiToggle" />
+                      🤖 AI tự trả lời cho Page này
+                    </label>
+                  </div>
+                  <div id="threadMessages" class="thread-messages"></div>
+                  <form id="threadReplyForm" class="thread-reply-row">
+                    <input type="text" id="threadReplyInput" placeholder="Nhập tin nhắn trả lời..." autocomplete="off" />
+                    <button type="submit" class="primary">Gửi</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

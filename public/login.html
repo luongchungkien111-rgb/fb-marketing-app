@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Đăng nhập — Phần mềm Marketing Facebook</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-card { max-width: 360px; width: 100%; }
+  .login-card h1 { font-size: 18px; margin-bottom: 4px; }
+  .login-card input { width: 100%; margin: 12px 0; }
+  .login-card button { width: 100%; }
+  .error-msg { color: var(--danger); font-size: 13px; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+  <div class="card login-card">
+    <h1>🔒 Đăng nhập</h1>
+    <p class="hint">Nhập mật khẩu để truy cập Phần mềm Marketing Facebook.</p>
+    <p class="error-msg" id="errorMsg" style="display:none">Sai mật khẩu, thử lại nhé.</p>
+    <form method="POST" action="/login">
+      <input type="password" name="password" placeholder="Mật khẩu" required autofocus />
+      <button type="submit" class="primary">Đăng nhập</button>
+    </form>
+  </div>
+  <script>
+    if (new URLSearchParams(location.search).get('error')) {
+      document.getElementById('errorMsg').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
