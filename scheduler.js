@@ -33,6 +33,7 @@ function startScheduler() {
           message: post.content,
           imagePath: post.image_path,
           imageUrl: post.image_url,
+          videoPath: post.video_path,
           videoUrl: post.video_url,
         });
         const fbPostId = result.post_id || result.id;

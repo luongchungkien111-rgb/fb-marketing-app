@@ -80,12 +80,37 @@ async function getUserPages(userAccessToken) {
 
 /**
  * Dang bai len mot Facebook Page ngay lap tuc. Uu tien video > anh > chi chu.
+ * - videoPath: duong dan file video local tren may dang chay server (tuy chon)
  * - imagePath: duong dan file anh local da upload qua form (tuy chon)
  * - imageUrl: URL anh public tren internet, dung khi khong co file local (tuy chon)
- * - videoUrl: URL video public tren internet (tuy chon)
+ * - videoUrl: URL video public tren internet, dung khi khong co file local (tuy chon)
  * Tra ve { id, post_id, post_type, post_url } de luu lai lien ket bai da dang.
  */
-async function publishPost({ pageId, accessToken, message, imagePath, imageUrl, videoUrl }) {
+async function publishPost({ pageId, accessToken, message, imagePath, imageUrl, videoPath, videoUrl }) {
+  if (videoPath && fs.existsSync(videoPath)) {
+    const form = new FormData();
+    form.append('description', message || '');
+    form.append('access_token', accessToken);
+    form.append('source', fs.createReadStream(videoPath));
+
+    const res = await axios.post(`${GRAPH_BASE}/${pageId}/videos`, form, {
+      headers: form.getHeaders(),
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+      // Video co the mat vai phut de Facebook nhan + xu ly xong request, can
+      // timeout dai hon mac dinh (30s) de tranh bao loi timeout ma video van
+      // dang upload binh thuong o phia Facebook.
+      timeout: 10 * 60 * 1000,
+    });
+    return {
+      ...res.data,
+      post_type: 'video',
+      post_url: res.data.post_id
+        ? `https://www.facebook.com/${res.data.post_id}`
+        : `https://www.facebook.com/${pageId}/videos/${res.data.id}`,
+    };
+  }
+
   if (videoUrl) {
     const res = await axios.post(`${GRAPH_BASE}/${pageId}/videos`, null, {
       params: { file_url: videoUrl, description: message || '', access_token: accessToken },

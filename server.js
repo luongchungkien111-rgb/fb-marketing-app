@@ -441,7 +441,8 @@ app.put('/api/posts/:id', upload.single('image'), (req, res) => {
 });
 
 // Nhap lich hang loat tu file CSV
-// (cot: page_row_id,date,time,content,image_url,video_url - 2 cot cuoi tuy chon).
+// (cot: page_row_id,date,time,content,image_url,video_url,image_path,video_path - cac cot cuoi tuy chon).
+// image_path/video_path la duong dan file tren chinh may dang chay server (se tu upload len Facebook).
 // date dang YYYY-MM-DD, time dang HH:MM (gio Viet Nam, UTC+7).
 // mode=preview: chi doc va tra ve xem truoc, khong tao bai viet.
 // mode=commit: thuc su tao cac bai viet 'pending' vao hang doi.
@@ -483,6 +484,10 @@ app.post('/api/posts/import', upload.single('file'), (req, res) => {
       results.push({ line: lineNo, ok: false, error: `Khong tim thay file anh: ${row.image_path}` });
       return;
     }
+    if (row.video_path && !fs.existsSync(row.video_path)) {
+      results.push({ line: lineNo, ok: false, error: `Khong tim thay file video: ${row.video_path}` });
+      return;
+    }
 
     if (mode === 'commit') {
       db.addPost({
@@ -490,6 +495,7 @@ app.post('/api/posts/import', upload.single('file'), (req, res) => {
         content: row.content,
         image_path: row.image_path || null,
         image_url: row.image_url || null,
+        video_path: row.video_path || null,
         video_url: row.video_url || null,
         scheduled_time,
         status: 'pending',
@@ -503,7 +509,7 @@ app.post('/api/posts/import', upload.single('file'), (req, res) => {
       scheduled_time_utc: scheduled_time,
       content_preview: row.content.length > 100 ? row.content.slice(0, 100) + '…' : row.content,
       has_image: !!(row.image_url || row.image_path),
-      has_video: !!row.video_url,
+      has_video: !!(row.video_url || row.video_path),
     });
   });
 
@@ -531,6 +537,7 @@ app.get('/api/posts/export', (req, res) => {
       content: p.content,
       image_url: p.image_url || '',
       video_url: p.video_url || '',
+      video_path: p.video_path || '',
       status: STATUS_LABEL_VI[p.status] || p.status,
       post_link: p.post_url || (p.error ? `Lỗi: ${p.error}` : ''),
       likes: p.insights?.likes ?? '',
@@ -547,6 +554,7 @@ app.get('/api/posts/export', (req, res) => {
     'content',
     'image_url',
     'video_url',
+    'video_path',
     'status',
     'post_link',
     'likes',
