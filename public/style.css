@@ -367,16 +367,70 @@ img.thumb { max-width: 56px; max-height: 56px; border-radius: 6px; }
 .modal-input { width: 100%; margin-bottom: 14px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-/* ===== Responsive ===== */
+/* ===== Menu hamburger + backdrop (an tren desktop, chi dung cho mobile) ===== */
+.menu-toggle {
+  display: none; background: transparent; border: 1px solid var(--border);
+  font-size: 18px; padding: 6px 11px; line-height: 1; border-radius: 8px;
+}
+.sidebar-close { display: none; }
+.sidebar-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 899;
+}
+.thread-back-btn { display: none; }
+
+/* ===== Responsive (dien thoai / man hinh hep) ===== */
 @media (max-width: 860px) {
-  .app-shell { flex-direction: column; height: auto; min-height: 100vh; }
-  .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 12px; overflow-x: auto; }
-  .brand { border-bottom: none; padding: 0 12px 0 0; margin-bottom: 0; }
-  .sidebar-footer { display: none; }
-  .nav { flex-direction: row; padding: 0; flex: none; }
-  .nav-item span:last-child { display: none; }
-  .nav-item { padding: 8px 10px; }
-  .main-area { height: auto; }
-  main { overflow-y: visible; }
-  .table-wrap.tall { max-height: 420px; }
+  .app-shell { height: 100vh; }
+
+  /* Sidebar -> menu keo (drawer) truot tu trai, an mac dinh */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 900;
+    width: 78vw; max-width: 300px;
+    flex-direction: column; align-items: stretch;
+    padding: 14px 0;
+    overflow-y: auto; overflow-x: hidden;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.25);
+  }
+  .app-shell.sidebar-open .sidebar { transform: translateX(0); }
+  .app-shell.sidebar-open .sidebar-backdrop { display: block; }
+
+  .brand { position: relative; padding: 0 44px 18px 18px; }
+  .sidebar-close {
+    display: block; position: absolute; top: -2px; right: 12px;
+    background: transparent; border: none; color: #fff; font-size: 18px; opacity: 0.8; padding: 6px;
+  }
+  .sidebar-footer { display: block; }
+  .nav { flex-direction: column; padding: 10px 10px; flex: 1; }
+  .nav-item { padding: 12px 14px; font-size: 15px; }
+  .nav-item span:last-child { display: inline; }
+
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
+  .main-area { height: 100vh; }
+  .topbar { padding: 12px 14px; gap: 10px; }
+  .topbar h1 { font-size: 16px; }
+  main { padding: 14px 12px 28px; gap: 14px; }
+  .card { padding: 14px 14px; border-radius: 10px; }
+
+  /* Cham 44px de bam de hon bang ngon tay */
+  button, .fb-login-btn, input, select { min-height: 40px; }
+  .list li .li-actions { width: 100%; justify-content: flex-end; }
+
+  .dashboard-summary { grid-template-columns: repeat(2, 1fr); }
+  .table-wrap { max-height: 60vh; }
+  .table-wrap.tall { max-height: 60vh; }
+
+  /* Inbox: hien 1 pane tai 1 thoi diem (danh sach HOAC hoi thoai), co nut Quay lai */
+  .inbox-shell { height: calc(100vh - 130px); flex-wrap: nowrap; }
+  .inbox-list-pane { width: 100%; border-right: none; }
+  .inbox-thread-pane { display: none; }
+  .inbox-shell.show-thread .inbox-list-pane { display: none; }
+  .inbox-shell.show-thread .inbox-thread-pane { display: flex; width: 100%; }
+  .thread-back-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; font-size: 20px; padding: 4px 8px; flex: none;
+  }
+  .msg-bubble { max-width: 85%; }
 }

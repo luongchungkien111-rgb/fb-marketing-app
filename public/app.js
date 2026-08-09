@@ -69,8 +69,22 @@ function switchView(viewName, title) {
   $('#viewTitle').textContent = title;
 }
 document.querySelectorAll('.nav-item').forEach((btn) =>
-  btn.addEventListener('click', () => switchView(btn.dataset.view, btn.dataset.title || btn.textContent.trim()))
+  btn.addEventListener('click', () => {
+    switchView(btn.dataset.view, btn.dataset.title || btn.textContent.trim());
+    closeSidebar();
+  })
 );
+
+// ---------- Menu keo (drawer) cho man hinh dien thoai ----------
+function openSidebar() {
+  document.querySelector('.app-shell').classList.add('sidebar-open');
+}
+function closeSidebar() {
+  document.querySelector('.app-shell').classList.remove('sidebar-open');
+}
+$('#btnOpenSidebar').addEventListener('click', openSidebar);
+$('#btnCloseSidebar').addEventListener('click', closeSidebar);
+$('#sidebarBackdrop').addEventListener('click', closeSidebar);
 
 let currentStatusFilter = '';
 
@@ -618,6 +632,7 @@ async function openPagePreview(pageRowId, pageName) {
 }
 
 $('#btnBackToPages').addEventListener('click', () => switchView('pages', '📄 Fanpage'));
+$('#btnBackToConvList').addEventListener('click', () => $('.inbox-shell').classList.remove('show-thread'));
 
 // ---------- Inbox chung (Tin nhan Messenger nhieu Page) ----------
 let currentConversationId = null;
@@ -665,6 +680,7 @@ function updateInboxUnreadBadge() {
 async function openConversation(id) {
   currentConversationId = id;
   renderConversationList(); // cap nhat highlight + bo dau cham chua doc tren item vua bam
+  $('.inbox-shell').classList.add('show-thread'); // man hinh dien thoai: chuyen sang xem hoi thoai
 
   const res = await fetch(`/api/conversations/${id}`);
   if (!res.ok) return;
