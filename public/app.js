@@ -677,10 +677,13 @@ function updateInboxUnreadBadge() {
   }
 }
 
-async function openConversation(id) {
+async function openConversation(id, { switchToThreadView = true } = {}) {
   currentConversationId = id;
   renderConversationList(); // cap nhat highlight + bo dau cham chua doc tren item vua bam
-  $('.inbox-shell').classList.add('show-thread'); // man hinh dien thoai: chuyen sang xem hoi thoai
+  // man hinh dien thoai: chuyen sang xem hoi thoai - CHI khi nguoi dung chu dong bam mo,
+  // khong lam khi day la lan lam moi tu dong ngam (neu khong se ep nguoi dung quay lai
+  // man hinh chat moi 20s ke ca khi ho da bam "Quay lai" xem danh sach)
+  if (switchToThreadView) $('.inbox-shell').classList.add('show-thread');
 
   const res = await fetch(`/api/conversations/${id}`);
   if (!res.ok) return;
@@ -769,7 +772,7 @@ loadConversations();
 setInterval(loadConversations, 20000);
 setInterval(() => {
   if (currentConversationId && document.querySelector('.view[data-view="inbox"]').classList.contains('active')) {
-    openConversation(currentConversationId);
+    openConversation(currentConversationId, { switchToThreadView: false });
   }
 }, 20000);
 setInterval(loadDashboard, 30000);
