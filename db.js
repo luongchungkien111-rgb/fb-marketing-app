@@ -321,7 +321,7 @@ function getDuePosts() {
     .filter((p) => p.fb_page_id); // bo qua neu Page da bi xoa
 }
 
-function addPost({ page_row_id, content, image_path, image_url, video_url, scheduled_time, status, fb_post_id, post_url }) {
+function addPost({ page_row_id, content, image_path, image_url, video_path, video_url, scheduled_time, status, fb_post_id, post_url }) {
   const data = load();
   const post = {
     id: data.nextPostId++,
@@ -329,6 +329,7 @@ function addPost({ page_row_id, content, image_path, image_url, video_url, sched
     content: content || '',
     image_path: image_path || null,
     image_url: image_url || null,
+    video_path: video_path || null,
     video_url: video_url || null,
     scheduled_time,
     status,
