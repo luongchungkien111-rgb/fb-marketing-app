@@ -286,16 +286,72 @@ function toDatetimeLocalValue(utcStr) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+const POSTS_PER_PAGE = 30;
+let currentPostsPage = 1;
+
 async function loadPosts() {
   const url = currentStatusFilter ? `/api/posts?status=${currentStatusFilter}` : '/api/posts';
   const res = await fetch(url);
   const posts = await res.json();
   lastLoadedPosts = posts;
+  if (currentPostsPage > Math.max(1, Math.ceil(posts.length / POSTS_PER_PAGE))) currentPostsPage = 1;
   renderPostsTable(posts);
   if (typeof loadDashboard === 'function') loadDashboard();
 }
 
-function renderPostsTable(posts) {
+function renderPagination(totalItems, perPage, currentPage, onChange) {
+  const el = $('#postsPagination');
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  if (totalPages <= 1) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const pageBtn = (p, label, disabled, active) =>
+    `<button type="button" class="page-btn${active ? ' active' : ''}" data-page="${p}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+
+  let pages = [];
+  const addRange = (from, to) => { for (let i = from; i <= to; i++) pages.push(i); };
+  if (totalPages <= 7) {
+    addRange(1, totalPages);
+  } else if (currentPage <= 4) {
+    addRange(1, 5);
+    pages.push('…', totalPages);
+  } else if (currentPage >= totalPages - 3) {
+    pages.push(1, '…');
+    addRange(totalPages - 4, totalPages);
+  } else {
+    pages.push(1, '…');
+    addRange(currentPage - 1, currentPage + 1);
+    pages.push('…', totalPages);
+  }
+
+  const from = (currentPage - 1) * perPage + 1;
+  const to = Math.min(totalItems, currentPage * perPage);
+
+  el.innerHTML =
+    `<span class="page-info">Hiển thị ${from}-${to} / ${totalItems} bài</span>` +
+    `<div class="page-nav">` +
+    pageBtn(currentPage - 1, '‹', currentPage === 1, false) +
+    pages.map((p) => (p === '…' ? '<span class="page-ellipsis">…</span>' : pageBtn(p, p, false, p === currentPage))).join('') +
+    pageBtn(currentPage + 1, '›', currentPage === totalPages, false) +
+    `</div>`;
+
+  el.querySelectorAll('.page-btn[data-page]:not([disabled])').forEach((btn) =>
+    btn.addEventListener('click', () => onChange(Number(btn.dataset.page)))
+  );
+}
+
+function renderPostsTable(allPosts) {
+  const start = (currentPostsPage - 1) * POSTS_PER_PAGE;
+  const posts = allPosts.slice(start, start + POSTS_PER_PAGE);
+
+  renderPagination(allPosts.length, POSTS_PER_PAGE, currentPostsPage, (page) => {
+    currentPostsPage = page;
+    renderPostsTable(allPosts);
+    $('.table-wrap.tall').scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
   const tbody = document.querySelector('#postsTable tbody');
   tbody.innerHTML =
     posts
@@ -509,6 +565,7 @@ document.querySelectorAll('.tab').forEach((tab) =>
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
     currentStatusFilter = tab.dataset.status;
+    currentPostsPage = 1;
     loadPosts();
   })
 );

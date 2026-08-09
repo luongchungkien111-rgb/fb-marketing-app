@@ -307,6 +307,19 @@ th {
 tbody tr:hover { background: rgba(24, 119, 242, 0.04); }
 img.thumb { max-width: 56px; max-height: 56px; border-radius: 6px; }
 
+/* ===== Phan trang ===== */
+.pagination {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 10px; padding-top: 14px; font-size: 13px; color: var(--muted);
+}
+.page-nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.page-btn {
+  min-width: 34px; padding: 6px 10px; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--border); color: var(--text);
+}
+.page-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
+.page-ellipsis { padding: 6px 4px; color: var(--muted); }
+
 .badge { padding: 3px 10px; border-radius: 12px; font-size: 12px; color: white; white-space: nowrap; }
 .badge.pending { background: var(--warn); }
 .badge.published { background: var(--success); }
