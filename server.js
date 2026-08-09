@@ -18,6 +18,7 @@ const {
   sendMessengerMessage,
   subscribePageToWebhook,
 } = require('./facebook');
+const tiktok = require('./tiktok');
 const { startScheduler } = require('./scheduler');
 const { startBackupSchedule } = require('./backup');
 const { startCommentReplier } = require('./comment-replier');
@@ -144,6 +145,49 @@ app.get('/auth/facebook/callback', async (req, res) => {
   }
 });
 
+// ---------- TIKTOK LOGIN (moi tai khoan phai tu dang nhap rieng - khac Facebook) ----------
+
+const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || `http://localhost:${PORT}/auth/tiktok/callback`;
+let pendingTiktokState = null;
+
+app.get('/auth/tiktok', (req, res) => {
+  if (!process.env.TIKTOK_CLIENT_KEY) {
+    return res.status(500).send('Chua cau hinh TIKTOK_CLIENT_KEY trong file .env. Xem README de biet cach lay.');
+  }
+  pendingTiktokState = crypto.randomBytes(16).toString('hex');
+  const url = tiktok.getLoginDialogUrl({ redirectUri: TIKTOK_REDIRECT_URI, state: pendingTiktokState });
+  res.redirect(url);
+});
+
+app.get('/auth/tiktok/callback', async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+  if (error) {
+    return res.send(`<p>Đăng nhập TikTok bị huỷ hoặc lỗi: ${error_description || error}</p><a href="/">Quay lại</a>`);
+  }
+  if (!code || !state || state !== pendingTiktokState) {
+    return res.status(400).send('Yêu cầu không hợp lệ (thiếu code/state). <a href="/">Quay lại</a>');
+  }
+  pendingTiktokState = null;
+  try {
+    const token = await tiktok.exchangeCodeForToken({ redirectUri: TIKTOK_REDIRECT_URI, code });
+    const user = await tiktok.getUserInfo(token.access_token);
+    const nowMs = Date.now();
+    db.upsertTiktokAccount({
+      open_id: user.open_id,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
+      access_token: token.access_token,
+      refresh_token: token.refresh_token,
+      expires_at: new Date(nowMs + token.expires_in * 1000).toISOString(),
+      refresh_expires_at: new Date(nowMs + token.refresh_expires_in * 1000).toISOString(),
+    });
+    res.send(`<p>Đã kết nối tài khoản TikTok "${user.display_name}".</p><a href="/">Quay lại phần mềm</a>`);
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    res.status(400).send(`<p>Lỗi khi kết nối TikTok: ${msg}</p><a href="/">Quay lại</a>`);
+  }
+});
+
 // ---------- DASHBOARD ----------
 
 // Tong hop nhanh hieu qua tung Page: so bai theo trang thai, tong luot
@@ -242,6 +286,66 @@ app.patch('/api/pages/:id/group', (req, res) => {
   const page = db.updatePageGroup(req.params.id, (group || '').trim());
   if (!page) return res.status(404).json({ error: 'Khong tim thay Page' });
   res.json({ ok: true, group: page.group });
+});
+
+// ---------- TAI KHOAN TIKTOK ----------
+
+app.get('/api/tiktok/accounts', (req, res) => {
+  res.json(db.listTiktokAccounts());
+});
+
+app.delete('/api/tiktok/accounts/:id', (req, res) => {
+  db.deleteTiktokAccount(req.params.id);
+  res.json({ ok: true });
+});
+
+/**
+ * Lay access token con hieu luc cho 1 tai khoan - tu lam moi bang refresh
+ * token neu access token da/sap het han (duoi 10 phut).
+ */
+async function getFreshTiktokAccessToken(accountId) {
+  const acc = db.getTiktokAccountById(accountId);
+  if (!acc) throw new Error('Khong tim thay tai khoan TikTok');
+  const expiresInMs = new Date(acc.expires_at).getTime() - Date.now();
+  if (expiresInMs > 10 * 60 * 1000) return acc.access_token;
+
+  const refreshed = await tiktok.refreshAccessToken(acc.refresh_token);
+  const nowMs = Date.now();
+  db.updateTiktokAccountTokens(acc.id, {
+    access_token: refreshed.access_token,
+    refresh_token: refreshed.refresh_token,
+    expires_at: new Date(nowMs + refreshed.expires_in * 1000).toISOString(),
+    refresh_expires_at: new Date(nowMs + refreshed.refresh_expires_in * 1000).toISOString(),
+  });
+  return refreshed.access_token;
+}
+
+// Dua 1 video (file da co san tren server, dung video_path giong ben Facebook)
+// vao Inbox nhap cua 1 tai khoan TikTok. Nguoi dung phai tu mo app TikTok de
+// hoan tat dang (che do khong can App qua audit).
+app.post('/api/tiktok/accounts/:id/upload', async (req, res) => {
+  const { video_path } = req.body;
+  if (!video_path) return res.status(400).json({ error: 'Thieu video_path' });
+  if (!fs.existsSync(video_path)) return res.status(400).json({ error: `Khong tim thay file video: ${video_path}` });
+  try {
+    const accessToken = await getFreshTiktokAccessToken(req.params.id);
+    const result = await tiktok.uploadVideoToInbox({ accessToken, videoPath: video_path });
+    res.json({ ok: true, publish_id: result.publish_id });
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.get('/api/tiktok/publish-status/:accountId/:publishId', async (req, res) => {
+  try {
+    const accessToken = await getFreshTiktokAccessToken(req.params.accountId);
+    const status = await tiktok.getPublishStatus({ accessToken, publishId: req.params.publishId });
+    res.json(status);
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    res.status(400).json({ error: msg });
+  }
 });
 
 // ---------- QUAN LY NHOM (GROUPS) ----------
