@@ -694,6 +694,7 @@ $('#btnBackToConvList').addEventListener('click', () => $('.inbox-shell').classL
 // ---------- Inbox chung (Tin nhan Messenger nhieu Page) ----------
 let currentConversationId = null;
 let lastLoadedConversations = [];
+let currentConvStatusFilter = '';
 
 async function loadConversations() {
   const res = await fetch('/api/conversations');
@@ -702,21 +703,40 @@ async function loadConversations() {
   updateInboxUnreadBadge();
 }
 
+document.querySelectorAll('.conv-filter-tab').forEach((tab) =>
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.conv-filter-tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentConvStatusFilter = tab.dataset.filter;
+    renderConversationList();
+  })
+);
+
 function renderConversationList() {
   const list = $('#conversationList');
+  const filtered = currentConvStatusFilter
+    ? lastLoadedConversations.filter((c) => (c.status || 'chua_lam') === currentConvStatusFilter)
+    : lastLoadedConversations;
+
   list.innerHTML =
-    lastLoadedConversations
-      .map(
-        (c) => `<li data-id="${c.id}" class="${c.unread ? 'unread' : ''} ${c.id === currentConversationId ? 'active' : ''}">
+    filtered
+      .map((c) => {
+        const status = c.status || 'chua_lam';
+        const statusBadge =
+          status === 'da_lam'
+            ? '<span class="conv-status-badge da_lam">🟢 Đã làm</span>'
+            : '<span class="conv-status-badge chua_lam">🟠 Chưa làm</span>';
+        return `<li data-id="${c.id}" class="${c.unread ? 'unread' : ''} ${c.id === currentConversationId ? 'active' : ''}">
           <div class="conv-top">
             <span><strong>${escapeHtml(c.participant_name)}</strong></span>
             ${c.unread ? '<span class="unread-dot"></span>' : ''}
           </div>
           <div class="conv-page">${escapeHtml(c.page_name)}${c.page_group ? ` · ${escapeHtml(c.page_group)}` : ''}</div>
           <div class="conv-preview">${c.last_message_direction === 'out' ? 'Bạn: ' : ''}${escapeHtml(c.last_message_preview || '')}</div>
-        </li>`
-      )
-      .join('') || '<li class="empty">Chưa có tin nhắn nào. Tin nhắn mới từ khách sẽ tự hiện ở đây.</li>';
+          ${statusBadge}
+        </li>`;
+      })
+      .join('') || '<li class="empty">Chưa có hội thoại nào phù hợp bộ lọc.</li>';
 
   list.querySelectorAll('li[data-id]').forEach((li) =>
     li.addEventListener('click', () => openConversation(li.dataset.id))
@@ -753,6 +773,11 @@ async function openConversation(id, { switchToThreadView = true } = {}) {
   $('#threadAiToggle').checked = !!(conv.page && conv.page.messenger_ai_enabled);
   $('#threadAiToggle').dataset.pageId = conv.page_row_id;
 
+  const convStatus = conv.status || 'chua_lam';
+  document.querySelectorAll('.status-pill').forEach((btn) =>
+    btn.classList.toggle('active', btn.dataset.status === convStatus)
+  );
+
   const box = $('#threadMessages');
   box.innerHTML = conv.messages
     .map(
@@ -769,6 +794,24 @@ async function openConversation(id, { switchToThreadView = true } = {}) {
   if (idx !== -1) lastLoadedConversations[idx].unread = false;
   updateInboxUnreadBadge();
 }
+
+document.querySelectorAll('.status-pill').forEach((btn) =>
+  btn.addEventListener('click', async () => {
+    if (!currentConversationId) return;
+    const status = btn.dataset.status;
+    document.querySelectorAll('.status-pill').forEach((b) => b.classList.toggle('active', b === btn));
+
+    await fetch(`/api/conversations/${currentConversationId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+
+    const idx = lastLoadedConversations.findIndex((c) => c.id === currentConversationId);
+    if (idx !== -1) lastLoadedConversations[idx].status = status;
+    renderConversationList();
+  })
+);
 
 $('#threadAiToggle').addEventListener('change', async (e) => {
   const pageId = e.target.dataset.pageId;

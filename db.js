@@ -163,6 +163,7 @@ function getOrCreateConversation(data, pageRowId, participantId, participantName
       participant_name: participantName || 'Khách',
       messages: [],
       unread: false,
+      status: 'chua_lam', // phan loai khach: 'chua_lam' (mac dinh) hoac 'da_lam'
       last_message_at: nowIso(),
     };
     data.conversations.push(conv);
@@ -234,6 +235,7 @@ function listConversations() {
         page_group: page ? page.group || '' : '',
         participant_id: c.participant_id,
         participant_name: c.participant_name,
+        status: c.status || 'chua_lam',
         unread: c.unread,
         last_message_at: c.last_message_at,
         last_message_preview: lastMsg ? lastMsg.text.slice(0, 80) : '',
@@ -247,7 +249,20 @@ function getConversationById(id) {
   const conv = data.conversations.find((c) => c.id === id);
   if (!conv) return null;
   const page = data.pages.find((p) => p.id === conv.page_row_id);
-  return { ...conv, page };
+  return { ...conv, status: conv.status || 'chua_lam', page };
+}
+
+/**
+ * Danh dau khach cua 1 hoi thoai la "chua_lam" hoac "da_lam" - dung de phan
+ * loai/loc khach hang giong Pancake (khach da duoc phuc vu vs khach moi/dang cho).
+ */
+function updateConversationStatus(id, status) {
+  const data = load();
+  const conv = data.conversations.find((c) => c.id === id);
+  if (!conv) return null;
+  conv.status = status === 'da_lam' ? 'da_lam' : 'chua_lam';
+  save(data);
+  return conv;
 }
 
 function markConversationRead(id) {
@@ -407,6 +422,7 @@ module.exports = {
   addOutgoingMessage,
   listConversations,
   getConversationById,
+  updateConversationStatus,
   markConversationRead,
   countUnreadConversations,
   upsertPages,

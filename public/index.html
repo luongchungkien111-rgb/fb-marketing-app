@@ -161,6 +161,11 @@
                   <span>Hội thoại gần đây</span>
                   <button type="button" id="btnSubscribeWebhook" title="Chạy 1 lần sau khi đã cấu hình Webhooks trên Meta App Dashboard" style="font-size:11px;padding:4px 8px">🔔 Đăng ký nhận tin</button>
                 </div>
+                <div class="conv-filter-tabs">
+                  <button type="button" class="conv-filter-tab active" data-filter="">Tất cả</button>
+                  <button type="button" class="conv-filter-tab" data-filter="chua_lam">🟠 Chưa làm</button>
+                  <button type="button" class="conv-filter-tab" data-filter="da_lam">🟢 Đã làm</button>
+                </div>
                 <ul id="conversationList" class="conv-list"></ul>
               </div>
               <div class="inbox-thread-pane">
@@ -171,6 +176,10 @@
                     <div style="flex:1;min-width:0">
                       <strong id="threadTitle"></strong>
                       <div class="hint" id="threadSubtitle" style="margin:2px 0 0"></div>
+                    </div>
+                    <div class="thread-status-toggle">
+                      <button type="button" class="status-pill" data-status="chua_lam">🟠 Chưa làm</button>
+                      <button type="button" class="status-pill" data-status="da_lam">🟢 Đã làm</button>
                     </div>
                     <label class="ai-toggle">
                       <input type="checkbox" id="threadAiToggle" />

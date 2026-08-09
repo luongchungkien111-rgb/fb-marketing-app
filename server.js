@@ -328,6 +328,13 @@ app.post('/api/conversations/:id/reply', async (req, res) => {
   }
 });
 
+// Danh dau khach cua 1 hoi thoai la "chua_lam" hoac "da_lam" (phan loai kieu Pancake)
+app.patch('/api/conversations/:id/status', (req, res) => {
+  const conv = db.updateConversationStatus(req.params.id, req.body.status);
+  if (!conv) return res.status(404).json({ error: 'Khong tim thay hoi thoai' });
+  res.json({ ok: true, status: conv.status });
+});
+
 // Xem truoc Page (info + bai dang gan day) ngay trong phan mem, khong can mo Facebook that
 app.get('/api/pages/:id/preview', async (req, res) => {
   const page = db.getPageById(req.params.id);

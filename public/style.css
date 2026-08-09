@@ -352,6 +352,25 @@ img.thumb { max-width: 56px; max-height: 56px; border-radius: 6px; }
 .conv-list li .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); flex: none; margin-top: 4px; }
 .conv-list .empty { padding: 20px 14px; color: var(--muted); font-size: 13px; }
 
+.conv-filter-tabs { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.conv-filter-tab {
+  flex: 1; font-size: 12px; padding: 6px 8px; border-radius: 16px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+}
+.conv-filter-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
+
+.conv-status-badge { display: inline-block; font-size: 10.5px; margin-top: 5px; padding: 1px 7px; border-radius: 9px; }
+.conv-status-badge.chua_lam { background: rgba(184, 134, 11, 0.15); color: var(--warn); }
+.conv-status-badge.da_lam { background: rgba(46, 125, 50, 0.15); color: var(--success); }
+
+.thread-status-toggle { display: flex; gap: 6px; }
+.status-pill {
+  font-size: 12px; padding: 5px 10px; border-radius: 16px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.status-pill.active[data-status="chua_lam"] { background: rgba(184, 134, 11, 0.15); border-color: var(--warn); color: var(--warn); font-weight: 600; }
+.status-pill.active[data-status="da_lam"] { background: rgba(46, 125, 50, 0.15); border-color: var(--success); color: var(--success); font-weight: 600; }
+
 .inbox-thread-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .thread-header {
   padding: 12px 16px; border-bottom: 1px solid var(--border);
