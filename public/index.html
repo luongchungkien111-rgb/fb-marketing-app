@@ -24,6 +24,7 @@
         <button class="nav-item" data-view="compose" data-title="✍️ Soạn bài viết"><span class="nav-icon">✍️</span><span>Soạn bài</span></button>
         <button class="nav-item" data-view="import" data-title="📥 Nhập lịch hàng loạt"><span class="nav-icon">📥</span><span>Nhập CSV</span></button>
         <button class="nav-item" data-view="posts" data-title="📋 Danh sách bài viết"><span class="nav-icon">📋</span><span>Bài viết</span></button>
+        <button class="nav-item" data-view="tiktok" data-title="🎵 TikTok"><span class="nav-icon">🎵</span><span>TikTok</span></button>
         <button class="nav-item" data-view="inbox" data-title="💬 Tin nhắn (Inbox chung)"><span class="nav-icon">💬</span><span>Tin nhắn</span><span id="inboxUnreadBadge" class="nav-badge" style="display:none">0</span></button>
       </nav>
       <div class="sidebar-footer">
@@ -149,6 +150,18 @@
               </table>
             </div>
             <div id="postsPagination" class="pagination"></div>
+          </div>
+        </section>
+
+        <!-- ===== TIKTOK ===== -->
+        <section class="view" data-view="tiktok">
+          <div class="card">
+            <a href="/auth/tiktok" class="fb-login-btn" style="background:#000">🎵 Kết nối tài khoản TikTok</a>
+            <p class="hint">Mỗi tài khoản TikTok phải tự đăng nhập riêng (khác Facebook — không gộp được nhiều tài khoản qua 1 lần đăng nhập). Video được đưa vào <strong>Inbox nháp</strong> của tài khoản — bạn cần tự mở app TikTok, xem lại rồi bấm "Đăng" để hoàn tất (chưa qua audit của TikTok nên chưa đăng công khai tự động 100% được).</p>
+          </div>
+          <div class="card">
+            <h2>Tài khoản đã kết nối</h2>
+            <ul id="tiktokAccountList" class="list"></ul>
           </div>
         </section>
 

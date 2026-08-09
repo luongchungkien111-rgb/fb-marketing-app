@@ -433,6 +433,62 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// ---------- TIKTOK ----------
+async function loadTiktokAccounts() {
+  const res = await fetch('/api/tiktok/accounts');
+  const accounts = await res.json();
+  const list = $('#tiktokAccountList');
+
+  if (!accounts.length) {
+    list.innerHTML = '<li>Chưa có tài khoản TikTok nào — bấm "Kết nối tài khoản TikTok" ở trên.</li>';
+    return;
+  }
+
+  list.innerHTML = accounts
+    .map(
+      (a) => `<li>
+        <span><strong>${escapeHtml(a.display_name)}</strong> — open_id: ${escapeHtml(a.open_id)}</span>
+        <span class="li-actions">
+          <input type="text" class="tiktokVideoPath" data-id="${a.id}" placeholder="Đường dẫn file video trên server (vd: /var/www/fb-marketing-app/data/schedule-videos/xxx.mp4)" style="width:340px" />
+          <button data-id="${a.id}" class="tiktokUploadBtn">📤 Đưa vào Inbox (test)</button>
+          <button data-id="${a.id}" class="removeTiktokAccount">Xoá</button>
+        </span>
+      </li>`
+    )
+    .join('');
+
+  list.querySelectorAll('.tiktokUploadBtn').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const input = list.querySelector(`.tiktokVideoPath[data-id="${id}"]`);
+      const video_path = input.value.trim();
+      if (!video_path) return alert('Nhập đường dẫn file video trên server trước.');
+      btn.disabled = true;
+      btn.textContent = 'Đang tải lên...';
+      try {
+        const res = await fetch(`/api/tiktok/accounts/${id}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_path }),
+        });
+        const data = await res.json();
+        if (!res.ok) return alert(`Lỗi: ${data.error}`);
+        alert(`Đã đưa video vào Inbox nháp (publish_id: ${data.publish_id}). Mở app TikTok trên tài khoản này để xem lại và bấm Đăng.`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📤 Đưa vào Inbox (test)';
+      }
+    })
+  );
+  list.querySelectorAll('.removeTiktokAccount').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!(await customConfirm('Xoá tài khoản TikTok này khỏi phần mềm?'))) return;
+      await fetch(`/api/tiktok/accounts/${btn.dataset.id}`, { method: 'DELETE' });
+      loadTiktokAccounts();
+    })
+  );
+}
+
 $('#groupFilter').addEventListener('change', (e) => {
   currentGroupFilter = e.target.value;
   renderPageList(lastLoadedPages);
@@ -867,6 +923,7 @@ $('#btnSubscribeWebhook').addEventListener('click', async () => {
 loadPages();
 loadPosts();
 loadDashboard();
+loadTiktokAccounts();
 checkAlerts();
 loadConversations();
 setInterval(loadConversations, 20000);
