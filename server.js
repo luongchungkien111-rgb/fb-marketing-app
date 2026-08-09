@@ -67,6 +67,7 @@ if (APP_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === '/login' || req.path === '/login.html') return next();
     if (req.path.startsWith('/webhook/')) return next(); // Facebook goi thang, khong co cookie dang nhap
+    if (req.path === '/style.css' || req.path === '/app.js') return next(); // can de trang login tu hien dung dang, khong lo lo du lieu gi ca
     const cookies = parseCookies(req);
     if (cookies.session && validSessions.has(cookies.session)) return next();
     if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
