@@ -20,6 +20,7 @@ const {
 } = require('./facebook');
 const tiktok = require('./tiktok');
 const { getFreshTiktokAccessToken } = require('./tiktok-token');
+const { notifyTiktokReadyToPost } = require('./notify');
 const { startScheduler } = require('./scheduler');
 const { startBackupSchedule } = require('./backup');
 const { startCommentReplier } = require('./comment-replier');
@@ -308,9 +309,21 @@ app.post('/api/tiktok/accounts/:id/upload', async (req, res) => {
   const { video_path } = req.body;
   if (!video_path) return res.status(400).json({ error: 'Thieu video_path' });
   if (!fs.existsSync(video_path)) return res.status(400).json({ error: `Khong tim thay file video: ${video_path}` });
+  const account = db.getTiktokAccountById(req.params.id);
+  if (!account) return res.status(400).json({ error: 'Khong tim thay tai khoan TikTok' });
   try {
     const accessToken = await getFreshTiktokAccessToken(req.params.id);
     const result = await tiktok.uploadVideoToInbox({ accessToken, videoPath: video_path });
+    // Ghi lai vao cung bang voi lich tu dong (scheduled_time = luc upload) de
+    // hien trong checklist "Can dang" + bao Telegram giong het video den tu lich.
+    const post = db.addTiktokPost({
+      tiktok_account_id: req.params.id,
+      video_path,
+      scheduled_time: db.nowIso(),
+      status: 'published',
+    });
+    db.updateTiktokPost(post.id, { publish_id: result.publish_id });
+    notifyTiktokReadyToPost({ postId: post.id, accountName: account.display_name, videoPath: video_path });
     res.json({ ok: true, publish_id: result.publish_id });
   } catch (err) {
     const msg = err.response?.data?.error?.message || err.message;
