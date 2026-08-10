@@ -52,6 +52,31 @@ async function notifyFailure({ postId, pageName, error }) {
 }
 
 /**
+ * Bao ngay khi 1 video vua duoc dua vao Inbox nhap cua 1 tai khoan TikTok -
+ * nhac nguoi dung mo app TikTok bam "Dang" som (draft se tu bien mat sau vai
+ * ngay neu khong ai xac nhan). Khac notifyFailure (chi bao khi loi), cai nay
+ * bao moi lan thanh cong vi day la buoc CAN LAM THEM (khong the tu dong hoa).
+ */
+async function notifyTiktokReadyToPost({ postId, accountName, videoPath }) {
+  const timestamp = new Date().toISOString();
+  const fileName = videoPath.split('/').pop();
+  const line = `[${timestamp}] Video #${postId} (TikTok: ${accountName}) da vao Inbox - can bam Dang: ${fileName}`;
+  appendLog(line);
+
+  await Promise.all([
+    sendTelegram(`🎵 <b>Video vào Inbox TikTok - cần bấm Đăng</b>\nTài khoản: ${accountName}\nVideo: ${fileName}\n\n👉 Mở app TikTok trên tài khoản này, xem lại rồi bấm "Đăng" (draft sẽ tự mất sau vài ngày nếu không đăng).`),
+    sendWebhook({
+      type: 'tiktok_ready_to_post',
+      text: `🎵 Video vào Inbox TikTok tài khoản "${accountName}" - cần mở app bấm Đăng.`,
+      post_id: postId,
+      account_name: accountName,
+      video_path: videoPath,
+      timestamp,
+    }),
+  ]);
+}
+
+/**
  * Canh bao khi AI phat hien 1 binh luan khach hang buc/phan nan gay gat,
  * can nguoi that vao xu ly ngay (khong the giao het cho AI tu tra loi).
  */
@@ -103,4 +128,4 @@ async function notifyUrgentMessage({ pageName, messageText, senderName, replyDra
   ]);
 }
 
-module.exports = { notifyFailure, notifyUrgentComment, notifyUrgentMessage };
+module.exports = { notifyFailure, notifyTiktokReadyToPost, notifyUrgentComment, notifyUrgentMessage };

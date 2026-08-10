@@ -3,7 +3,7 @@ const db = require('./db');
 const { publishPost } = require('./facebook');
 const tiktok = require('./tiktok');
 const { getFreshTiktokAccessToken } = require('./tiktok-token');
-const { notifyFailure } = require('./notify');
+const { notifyFailure, notifyTiktokReadyToPost } = require('./notify');
 
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MINUTES = [5, 15, 45]; // lan 1: cho 5 phut, lan 2: 15 phut, lan 3: 45 phut
@@ -92,6 +92,7 @@ function startScheduler() {
           next_attempt_at: null,
         });
         console.log(`[scheduler] Da dua video #${post.id} vao Inbox tai khoan TikTok "${post.account_name}" (publish_id: ${result.publish_id})`);
+        notifyTiktokReadyToPost({ postId: post.id, accountName: post.account_name, videoPath: post.video_path });
       } catch (err) {
         const msg = err.response?.data?.error?.message || err.message;
         const retryCount = (post.retry_count || 0) + 1;
