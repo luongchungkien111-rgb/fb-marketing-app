@@ -1,11 +1,14 @@
 const cron = require('node-cron');
 const db = require('./db');
 const { publishPost } = require('./facebook');
+const tiktok = require('./tiktok');
+const { getFreshTiktokAccessToken } = require('./tiktok-token');
 const { notifyFailure } = require('./notify');
 
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MINUTES = [5, 15, 45]; // lan 1: cho 5 phut, lan 2: 15 phut, lan 3: 45 phut
 const STAGGER_MS = 4000; // giãn 4 giay giua moi lan goi Graph API de tranh burst request
+const TIKTOK_STAGGER_MS = 4000; // giãn 4 giay giua moi lan upload TikTok, cung ly do
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +73,51 @@ function startScheduler() {
       if (i < due.length - 1) await sleep(STAGGER_MS);
     }
   });
+
+  cron.schedule('* * * * *', async () => {
+    const due = db.getDueTiktokPosts();
+    if (!due.length) return;
+
+    console.log(`[scheduler] ${due.length} video TikTok den gio, bat dau dua vao Inbox (giãn ${TIKTOK_STAGGER_MS / 1000}s/video)...`);
+
+    for (let i = 0; i < due.length; i++) {
+      const post = due[i];
+      try {
+        const accessToken = await getFreshTiktokAccessToken(post.tiktok_account_id);
+        const result = await tiktok.uploadVideoToInbox({ accessToken, videoPath: post.video_path });
+        db.updateTiktokPost(post.id, {
+          status: 'published',
+          publish_id: result.publish_id,
+          error: null,
+          next_attempt_at: null,
+        });
+        console.log(`[scheduler] Da dua video #${post.id} vao Inbox tai khoan TikTok "${post.account_name}" (publish_id: ${result.publish_id})`);
+      } catch (err) {
+        const msg = err.response?.data?.error?.message || err.message;
+        const retryCount = (post.retry_count || 0) + 1;
+
+        if (retryCount <= MAX_RETRIES) {
+          const backoffMin = RETRY_BACKOFF_MINUTES[retryCount - 1] || 45;
+          db.updateTiktokPost(post.id, {
+            retry_count: retryCount,
+            next_attempt_at: db.addMinutesIso(backoffMin),
+            error: `(thu lai lan ${retryCount}/${MAX_RETRIES}) ${msg}`,
+          });
+          console.warn(
+            `[scheduler] Loi video TikTok #${post.id}, se thu lai sau ${backoffMin} phut (lan ${retryCount}/${MAX_RETRIES}):`,
+            msg
+          );
+        } else {
+          db.updateTiktokPost(post.id, { status: 'failed', error: msg });
+          console.error(`[scheduler] Video TikTok #${post.id} that bai vinh vien sau ${MAX_RETRIES} lan thu:`, msg);
+          notifyFailure({ postId: post.id, pageName: `TikTok: ${post.account_name}`, error: msg });
+        }
+      }
+
+      if (i < due.length - 1) await sleep(TIKTOK_STAGGER_MS);
+    }
+  });
+
   console.log('[scheduler] Da khoi dong, kiem tra bai cho moi phut.');
 }
 

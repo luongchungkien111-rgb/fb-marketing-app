@@ -447,7 +447,7 @@ async function loadTiktokAccounts() {
   list.innerHTML = accounts
     .map(
       (a) => `<li>
-        <span><strong>${escapeHtml(a.display_name)}</strong> — open_id: ${escapeHtml(a.open_id)}</span>
+        <span><strong>${escapeHtml(a.display_name)}</strong> — id: ${a.id} (open_id: ${escapeHtml(a.open_id)})</span>
         <span class="li-actions">
           <input type="text" class="tiktokVideoPath" data-id="${a.id}" placeholder="Đường dẫn file video trên server (vd: /var/www/fb-marketing-app/data/schedule-videos/xxx.mp4)" style="width:340px" />
           <button data-id="${a.id}" class="tiktokUploadBtn">📤 Đưa vào Inbox (test)</button>
@@ -456,6 +456,13 @@ async function loadTiktokAccounts() {
       </li>`
     )
     .join('');
+
+  const accountSelect = $('#tiktokPostAccount');
+  if (accountSelect) {
+    const prevValue = accountSelect.value;
+    accountSelect.innerHTML = accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.display_name)}</option>`).join('');
+    if (accounts.some((a) => String(a.id) === prevValue)) accountSelect.value = prevValue;
+  }
 
   list.querySelectorAll('.tiktokUploadBtn').forEach((btn) =>
     btn.addEventListener('click', async () => {
@@ -488,6 +495,123 @@ async function loadTiktokAccounts() {
     })
   );
 }
+
+function tiktokStatusLabel(s) {
+  return { pending: 'Đang chờ', published: 'Đã đưa vào Inbox', failed: 'Lỗi' }[s] || s;
+}
+
+let currentTiktokStatusFilter = '';
+
+async function loadTiktokPosts() {
+  const url = currentTiktokStatusFilter ? `/api/tiktok/posts?status=${currentTiktokStatusFilter}` : '/api/tiktok/posts';
+  const res = await fetch(url);
+  const posts = await res.json();
+  renderTiktokPostsTable(posts);
+}
+
+function renderTiktokPostsTable(posts) {
+  const tbody = document.querySelector('#tiktokPostsTable tbody');
+  tbody.innerHTML =
+    posts
+      .map((post) => {
+        const actions = post.status === 'pending' ? `<button data-id="${post.id}" class="cancelTiktokPost">Huỷ</button>` : '';
+        return `<tr>
+        <td>${escapeHtml(post.account_name)}</td>
+        <td class="content-cell"><span class="content-text">${escapeHtml(post.video_path)}</span></td>
+        <td>${formatDate(post.scheduled_time)}</td>
+        <td><span class="badge ${post.status}">${tiktokStatusLabel(post.status)}</span>${post.error ? `<br><small style="color:var(--danger)">${escapeHtml(post.error)}</small>` : ''}</td>
+        <td>${actions}</td>
+      </tr>`;
+      })
+      .join('') || '<tr><td colspan="5">Chưa có video nào được lên lịch.</td></tr>';
+
+  tbody.querySelectorAll('.content-text').forEach((el) => el.addEventListener('click', () => el.classList.toggle('expanded')));
+  tbody.querySelectorAll('.cancelTiktokPost').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!(await customConfirm('Huỷ video đang chờ lịch này?'))) return;
+      await fetch(`/api/tiktok/posts/${btn.dataset.id}`, { method: 'DELETE' });
+      loadTiktokPosts();
+    })
+  );
+}
+
+document.querySelectorAll('.ttab').forEach((tab) =>
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.ttab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTiktokStatusFilter = tab.dataset.tiktokStatus;
+    loadTiktokPosts();
+  })
+);
+
+$('#tiktokPostForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const tiktok_account_id = $('#tiktokPostAccount').value;
+  const video_path = $('#tiktokPostVideoPath').value.trim();
+  const scheduledLocal = $('#tiktokPostSchedule').value;
+  if (!tiktok_account_id) return alert('Chưa có tài khoản TikTok nào — kết nối tài khoản trước.');
+  if (!video_path) return alert('Nhập đường dẫn file video trên server.');
+  if (!scheduledLocal) return alert('Chọn thời gian lên lịch.');
+
+  const scheduled_time = new Date(scheduledLocal).toISOString().slice(0, 19).replace('T', ' ');
+  const res = await fetch('/api/tiktok/posts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tiktok_account_id, video_path, scheduled_time }),
+  });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error);
+  $('#tiktokPostForm').reset();
+  loadTiktokPosts();
+});
+
+async function runTiktokCsvImport(mode) {
+  const file = $('#tiktokCsvFile').files[0];
+  if (!file) return alert('Chọn file CSV trước.');
+
+  const form = new FormData();
+  form.append('file', file);
+  form.append('mode', mode);
+
+  const res = await fetch('/api/tiktok/posts/import', { method: 'POST', body: form });
+  const data = await res.json();
+  if (!res.ok) {
+    $('#tiktokCsvResult').innerHTML = `<p style="color:var(--danger)">${escapeHtml(data.error)}</p>`;
+    $('#btnCommitTiktokCsv').disabled = true;
+    return;
+  }
+
+  const okRows = data.results.filter((r) => r.ok);
+  const errRows = data.results.filter((r) => !r.ok);
+
+  let html = `<p><strong>${data.totalRows}</strong> dòng — hợp lệ: <strong style="color:var(--success)">${okRows.length}</strong>, lỗi: <strong style="color:var(--danger)">${errRows.length}</strong>${mode === 'commit' ? `. Đã thêm vào lịch: <strong>${data.created}</strong>` : ''}</p>`;
+
+  if (errRows.length) {
+    html += `<details open><summary>Chi tiết lỗi (${errRows.length} dòng)</summary><ul class="list">`;
+    html += errRows.map((r) => `<li>Dòng ${r.line}: ${escapeHtml(r.error)}</li>`).join('');
+    html += '</ul></details>';
+  }
+
+  if (mode === 'preview' && okRows.length) {
+    html += `<details><summary>Xem trước ${Math.min(okRows.length, 10)}/${okRows.length} dòng đầu</summary>`;
+    html += '<table><thead><tr><th>Dòng</th><th>Tài khoản</th><th>Giờ đăng (UTC)</th><th>Video</th></tr></thead><tbody>';
+    html += okRows
+      .slice(0, 10)
+      .map((r) => `<tr><td>${r.line}</td><td>${escapeHtml(r.account_name)}</td><td>${escapeHtml(r.scheduled_time_utc)}</td><td class="content-cell">${escapeHtml(r.video_path)}</td></tr>`)
+      .join('');
+    html += '</tbody></table></details>';
+  }
+
+  $('#tiktokCsvResult').innerHTML = html;
+  $('#btnCommitTiktokCsv').disabled = mode !== 'preview' || okRows.length === 0;
+}
+
+$('#btnPreviewTiktokCsv').addEventListener('click', () => runTiktokCsvImport('preview'));
+$('#btnCommitTiktokCsv').addEventListener('click', async () => {
+  if (!(await customConfirm('Xác nhận thêm toàn bộ các dòng hợp lệ vào hàng đợi lên lịch?'))) return;
+  await runTiktokCsvImport('commit');
+  loadTiktokPosts();
+});
 
 $('#groupFilter').addEventListener('change', (e) => {
   currentGroupFilter = e.target.value;
@@ -924,6 +1048,8 @@ loadPages();
 loadPosts();
 loadDashboard();
 loadTiktokAccounts();
+loadTiktokPosts();
+setInterval(loadTiktokPosts, 15000);
 checkAlerts();
 loadConversations();
 setInterval(loadConversations, 20000);

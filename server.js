@@ -19,6 +19,7 @@ const {
   subscribePageToWebhook,
 } = require('./facebook');
 const tiktok = require('./tiktok');
+const { getFreshTiktokAccessToken } = require('./tiktok-token');
 const { startScheduler } = require('./scheduler');
 const { startBackupSchedule } = require('./backup');
 const { startCommentReplier } = require('./comment-replier');
@@ -300,27 +301,6 @@ app.delete('/api/tiktok/accounts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-/**
- * Lay access token con hieu luc cho 1 tai khoan - tu lam moi bang refresh
- * token neu access token da/sap het han (duoi 10 phut).
- */
-async function getFreshTiktokAccessToken(accountId) {
-  const acc = db.getTiktokAccountById(accountId);
-  if (!acc) throw new Error('Khong tim thay tai khoan TikTok');
-  const expiresInMs = new Date(acc.expires_at).getTime() - Date.now();
-  if (expiresInMs > 10 * 60 * 1000) return acc.access_token;
-
-  const refreshed = await tiktok.refreshAccessToken(acc.refresh_token);
-  const nowMs = Date.now();
-  db.updateTiktokAccountTokens(acc.id, {
-    access_token: refreshed.access_token,
-    refresh_token: refreshed.refresh_token,
-    expires_at: new Date(nowMs + refreshed.expires_in * 1000).toISOString(),
-    refresh_expires_at: new Date(nowMs + refreshed.refresh_expires_in * 1000).toISOString(),
-  });
-  return refreshed.access_token;
-}
-
 // Dua 1 video (file da co san tren server, dung video_path giong ben Facebook)
 // vao Inbox nhap cua 1 tai khoan TikTok. Nguoi dung phai tu mo app TikTok de
 // hoan tat dang (che do khong can App qua audit).
@@ -347,6 +327,149 @@ app.get('/api/tiktok/publish-status/:accountId/:publishId', async (req, res) => 
     const msg = err.response?.data?.error?.message || err.message;
     res.status(400).json({ error: msg });
   }
+});
+
+// ---------- LICH DANG TIKTOK ----------
+// scheduler.js se tu dua video vao Inbox nhap dung gio - nguoi dung van phai
+// tu mo app TikTok bam "Dang" (xem ghi chu o tiktok.js / giao dien TikTok).
+
+app.get('/api/tiktok/posts', (req, res) => {
+  res.json(db.listTiktokPosts(req.query.status));
+});
+
+app.post('/api/tiktok/posts', (req, res) => {
+  const { tiktok_account_id, video_path, scheduled_time } = req.body;
+  if (!tiktok_account_id || !video_path || !scheduled_time) {
+    return res.status(400).json({ error: 'Thieu tiktok_account_id/video_path/scheduled_time' });
+  }
+  if (!db.getTiktokAccountById(tiktok_account_id)) {
+    return res.status(400).json({ error: 'Khong tim thay tai khoan TikTok' });
+  }
+  if (!fs.existsSync(video_path)) {
+    return res.status(400).json({ error: `Khong tim thay file video: ${video_path}` });
+  }
+  const post = db.addTiktokPost({ tiktok_account_id, video_path, scheduled_time, status: 'pending' });
+  res.json({ ok: true, post });
+});
+
+// Sua gio dang/duong dan video cua 1 bai cho lich (chi cho phep khi status = pending).
+app.put('/api/tiktok/posts/:id', (req, res) => {
+  const post = db.getTiktokPostById(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
+  if (post.status !== 'pending') {
+    return res.status(400).json({ error: 'Chi sua duoc bai dang cho lich (pending)' });
+  }
+  const { video_path, scheduled_time } = req.body;
+  const patch = { error: null, retry_count: 0, next_attempt_at: null };
+  if (video_path) {
+    if (!fs.existsSync(video_path)) return res.status(400).json({ error: `Khong tim thay file video: ${video_path}` });
+    patch.video_path = video_path;
+  }
+  if (scheduled_time) patch.scheduled_time = scheduled_time;
+  const updated = db.updateTiktokPost(req.params.id, patch);
+  res.json({ ok: true, post: updated });
+});
+
+app.delete('/api/tiktok/posts/:id', (req, res) => {
+  const post = db.getTiktokPostById(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
+  if (post.status !== 'pending') {
+    return res.status(400).json({ error: 'Chi huy duoc bai dang cho lich' });
+  }
+  db.deleteTiktokPost(req.params.id);
+  res.json({ ok: true });
+});
+
+// Nhap lich hang loat tu file CSV (cot: tiktok_account_id,date,time,video_path).
+// video_path la duong dan file tren chinh may dang chay server (giong ben Facebook).
+// date dang YYYY-MM-DD, time dang HH:MM (gio Viet Nam, UTC+7).
+// mode=preview: chi doc va tra ve xem truoc, khong tao bai viet.
+// mode=commit: thuc su tao cac bai viet 'pending' vao hang doi.
+app.post('/api/tiktok/posts/import', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Thieu file CSV' });
+  let text;
+  try {
+    text = fs.readFileSync(req.file.path, 'utf8');
+  } finally {
+    fs.unlinkSync(req.file.path);
+  }
+
+  const rows = parseCsv(text);
+  if (!rows.length) return res.status(400).json({ error: 'File CSV rong hoac sai dinh dang' });
+
+  const mode = req.body.mode === 'commit' ? 'commit' : 'preview';
+  const results = [];
+  let created = 0;
+
+  rows.forEach((row, idx) => {
+    const lineNo = idx + 2;
+    const account = db.getTiktokAccountById(row.tiktok_account_id);
+    if (!account) {
+      results.push({ line: lineNo, ok: false, error: `Khong tim thay tai khoan TikTok id ${row.tiktok_account_id}` });
+      return;
+    }
+    if (!row.date || !row.time || !row.video_path) {
+      results.push({ line: lineNo, ok: false, error: 'Thieu date/time/video_path' });
+      return;
+    }
+    const d = new Date(`${row.date}T${row.time}:00+07:00`);
+    if (isNaN(d.getTime())) {
+      results.push({ line: lineNo, ok: false, error: `Ngay/gio khong hop le: ${row.date} ${row.time}` });
+      return;
+    }
+    const scheduled_time = d.toISOString().slice(0, 19).replace('T', ' ');
+
+    if (!fs.existsSync(row.video_path)) {
+      results.push({ line: lineNo, ok: false, error: `Khong tim thay file video: ${row.video_path}` });
+      return;
+    }
+
+    if (mode === 'commit') {
+      db.addTiktokPost({
+        tiktok_account_id: row.tiktok_account_id,
+        video_path: row.video_path,
+        scheduled_time,
+        status: 'pending',
+      });
+      created++;
+    }
+    results.push({
+      line: lineNo,
+      ok: true,
+      account_name: account.display_name,
+      scheduled_time_utc: scheduled_time,
+      video_path: row.video_path,
+    });
+  });
+
+  res.json({ mode, totalRows: rows.length, created, results });
+});
+
+const TIKTOK_STATUS_LABEL_VI = { pending: 'Chưa đăng', published: 'Đã đưa vào Inbox', failed: 'Lỗi' };
+
+app.get('/api/tiktok/posts/export', (req, res) => {
+  const posts = db.listTiktokPosts(req.query.status);
+  const rows = posts.map((p) => {
+    const d = new Date(p.scheduled_time.replace(' ', 'T') + 'Z');
+    const vn = new Date(d.getTime() + 7 * 3600 * 1000);
+    const date = vn.toISOString().slice(0, 10);
+    const time = vn.toISOString().slice(11, 16);
+    return {
+      tiktok_account_id: p.tiktok_account_id,
+      account_name: p.account_name,
+      date,
+      time,
+      video_path: p.video_path,
+      status: TIKTOK_STATUS_LABEL_VI[p.status] || p.status,
+      publish_id: p.publish_id || '',
+      error: p.error || '',
+    };
+  });
+
+  const csv = toCsv(rows, ['tiktok_account_id', 'account_name', 'date', 'time', 'video_path', 'status', 'publish_id', 'error']);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="trang-thai-lich-dang-tiktok.csv"`);
+  res.send('﻿' + csv);
 });
 
 // ---------- QUAN LY NHOM (GROUPS) ----------

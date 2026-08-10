@@ -163,6 +163,48 @@
             <h2>Tài khoản đã kết nối</h2>
             <ul id="tiktokAccountList" class="list"></ul>
           </div>
+
+          <div class="card">
+            <h2>Lên lịch đăng video</h2>
+            <p class="hint">Hệ thống sẽ tự đưa video vào <strong>Inbox nháp</strong> của tài khoản đúng giờ đã chọn — bạn vẫn cần tự mở app TikTok trên tài khoản đó, xem lại rồi bấm "Đăng" (draft sẽ tự biến mất sau vài ngày nếu không đăng).</p>
+            <form id="tiktokPostForm" class="row">
+              <select id="tiktokPostAccount" required></select>
+              <input type="text" id="tiktokPostVideoPath" placeholder="Đường dẫn file video trên server (vd: /var/www/fb-marketing-app/data/schedule-videos/xxx.mp4)" style="width:340px" required />
+              <label class="schedule-label">Lên lịch lúc:
+                <input type="datetime-local" id="tiktokPostSchedule" required />
+              </label>
+              <button type="submit" class="primary">📆 Lên lịch</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2>Nhập lịch hàng loạt (CSV)</h2>
+            <p class="hint">Cột file: <code>tiktok_account_id,date,time,video_path</code>. date dạng YYYY-MM-DD, time dạng HH:MM (giờ Việt Nam). Xem <code>id</code> của tài khoản ở danh sách bên trên (cạnh tên tài khoản).</p>
+            <div class="row">
+              <input type="file" id="tiktokCsvFile" accept=".csv" />
+              <button type="button" id="btnPreviewTiktokCsv">👁️ Xem trước</button>
+              <button type="button" id="btnCommitTiktokCsv" class="primary" disabled>✅ Xác nhận, thêm vào lịch</button>
+            </div>
+            <div id="tiktokCsvResult"></div>
+            <a href="/api/tiktok/posts/export" class="fb-login-btn" style="background:var(--muted);margin-top:10px" download>⬇️ Xuất file trạng thái (CSV)</a>
+          </div>
+
+          <div class="card">
+            <div class="tabs">
+              <button class="ttab active" data-tiktok-status="">Tất cả</button>
+              <button class="ttab" data-tiktok-status="pending">Đang chờ</button>
+              <button class="ttab" data-tiktok-status="published">Đã đưa vào Inbox</button>
+              <button class="ttab" data-tiktok-status="failed">Lỗi</button>
+            </div>
+            <div class="table-wrap tall">
+              <table id="tiktokPostsTable">
+                <thead>
+                  <tr><th>Tài khoản</th><th>Video</th><th>Thời gian</th><th>Trạng thái</th><th></th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <!-- ===== INBOX (TIN NHAN CHUNG NHIEU PAGE) ===== -->

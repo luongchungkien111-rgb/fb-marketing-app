@@ -7,12 +7,24 @@ const DB_FILE = path.join(__dirname, 'data', 'app.db.json');
 
 function load() {
   if (!fs.existsSync(DB_FILE)) {
-    return { pages: [], posts: [], nextPageId: 1, nextPostId: 1, conversations: [], tiktokAccounts: [], nextTiktokAccountId: 1 };
+    return {
+      pages: [],
+      posts: [],
+      nextPageId: 1,
+      nextPostId: 1,
+      conversations: [],
+      tiktokAccounts: [],
+      nextTiktokAccountId: 1,
+      tiktokPosts: [],
+      nextTiktokPostId: 1,
+    };
   }
   const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   if (!data.conversations) data.conversations = []; // file cu tao truoc khi co tinh nang Tin nhan
   if (!data.tiktokAccounts) data.tiktokAccounts = []; // file cu tao truoc khi co tinh nang TikTok
   if (!data.nextTiktokAccountId) data.nextTiktokAccountId = 1;
+  if (!data.tiktokPosts) data.tiktokPosts = []; // file cu tao truoc khi co tinh nang lich dang TikTok
+  if (!data.nextTiktokPostId) data.nextTiktokPostId = 1;
   return data;
 }
 
@@ -463,6 +475,76 @@ function deleteTiktokAccount(id) {
   save(data);
 }
 
+// ---------- LICH DANG TIKTOK ----------
+// Cung mo hinh voi POSTS (Facebook): 1 dong = 1 video se duoc dua vao Inbox
+// nhap cua 1 tai khoan TikTok tai 1 thoi diem. Khong co "content" vi TikTok
+// Inbox upload khong nhan caption (nguoi dung tu them khi bam Dang trong app TikTok).
+
+function listTiktokPosts(status) {
+  const data = load();
+  let posts = data.tiktokPosts;
+  if (status) posts = posts.filter((p) => p.status === status);
+  const accountsById = Object.fromEntries(data.tiktokAccounts.map((a) => [a.id, a]));
+  return posts
+    .slice()
+    .sort((a, b) => (a.scheduled_time > b.scheduled_time ? 1 : -1))
+    .map((p) => ({ ...p, account_name: accountsById[p.tiktok_account_id]?.display_name || '(Tai khoan da xoa)' }));
+}
+
+function getDueTiktokPosts() {
+  const data = load();
+  const now = nowIso();
+  return data.tiktokPosts
+    .filter(
+      (p) =>
+        p.status === 'pending' &&
+        p.scheduled_time <= now &&
+        (!p.next_attempt_at || p.next_attempt_at <= now)
+    )
+    .map((p) => ({ ...p, account_name: data.tiktokAccounts.find((a) => a.id === p.tiktok_account_id)?.display_name }))
+    .filter((p) => data.tiktokAccounts.some((a) => a.id === p.tiktok_account_id)); // bo qua neu tai khoan da bi xoa
+}
+
+function addTiktokPost({ tiktok_account_id, video_path, scheduled_time, status }) {
+  const data = load();
+  const post = {
+    id: data.nextTiktokPostId++,
+    tiktok_account_id: Number(tiktok_account_id),
+    video_path,
+    scheduled_time,
+    status,
+    publish_id: null,
+    retry_count: 0,
+    next_attempt_at: null,
+    error: null,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  data.tiktokPosts.push(post);
+  save(data);
+  return post;
+}
+
+function updateTiktokPost(id, patch) {
+  const data = load();
+  const post = data.tiktokPosts.find((p) => p.id === Number(id));
+  if (!post) return null;
+  Object.assign(post, patch, { updated_at: nowIso() });
+  save(data);
+  return post;
+}
+
+function getTiktokPostById(id) {
+  const data = load();
+  return data.tiktokPosts.find((p) => p.id === Number(id));
+}
+
+function deleteTiktokPost(id) {
+  const data = load();
+  data.tiktokPosts = data.tiktokPosts.filter((p) => p.id !== Number(id));
+  save(data);
+}
+
 // ---------- BINH LUAN DA TRA LOI (chong tra loi trung, dung cho auto-reply AI) ----------
 
 function isCommentReplied(commentId) {
@@ -512,4 +594,10 @@ module.exports = {
   upsertTiktokAccount,
   updateTiktokAccountTokens,
   deleteTiktokAccount,
+  listTiktokPosts,
+  getDueTiktokPosts,
+  addTiktokPost,
+  updateTiktokPost,
+  getTiktokPostById,
+  deleteTiktokPost,
 };
