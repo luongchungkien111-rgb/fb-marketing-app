@@ -25,6 +25,10 @@ function load() {
   if (!data.nextTiktokAccountId) data.nextTiktokAccountId = 1;
   if (!data.tiktokPosts) data.tiktokPosts = []; // file cu tao truoc khi co tinh nang lich dang TikTok
   if (!data.nextTiktokPostId) data.nextTiktokPostId = 1;
+  data.tiktokPosts.forEach((p) => {
+    if (p.confirmed === undefined) p.confirmed = false; // bai tao truoc khi co checklist "Can dang hom nay"
+    if (p.confirmed_at === undefined) p.confirmed_at = null;
+  });
   return data;
 }
 
@@ -517,12 +521,38 @@ function addTiktokPost({ tiktok_account_id, video_path, scheduled_time, status }
     retry_count: 0,
     next_attempt_at: null,
     error: null,
+    confirmed: false, // nguoi dung da tu bam "Dang" tren app TikTok that hay chua (khac voi status='published' = da vao Inbox nhap)
+    confirmed_at: null,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
   data.tiktokPosts.push(post);
   save(data);
   return post;
+}
+
+/**
+ * Danh dau 1 video da vao Inbox la nguoi dung da tu mo app TikTok bam "Dang"
+ * xong xuoi - dung de lam checklist "Can dang hom nay" tren giao dien.
+ */
+function markTiktokPostConfirmed(id) {
+  const data = load();
+  const post = data.tiktokPosts.find((p) => p.id === Number(id));
+  if (!post) return null;
+  post.confirmed = true;
+  post.confirmed_at = nowIso();
+  post.updated_at = nowIso();
+  save(data);
+  return post;
+}
+
+/**
+ * So video da vao Inbox nhung chua duoc danh dau la da bam Dang thu cong -
+ * dung cho badge nhac nho tren sidebar.
+ */
+function countUnconfirmedTiktokPosts() {
+  const data = load();
+  return data.tiktokPosts.filter((p) => p.status === 'published' && !p.confirmed).length;
 }
 
 function updateTiktokPost(id, patch) {
@@ -600,4 +630,6 @@ module.exports = {
   updateTiktokPost,
   getTiktokPostById,
   deleteTiktokPost,
+  markTiktokPostConfirmed,
+  countUnconfirmedTiktokPosts,
 };

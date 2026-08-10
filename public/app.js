@@ -500,13 +500,17 @@ function tiktokStatusLabel(s) {
   return { pending: 'Đang chờ', published: 'Đã đưa vào Inbox', failed: 'Lỗi' }[s] || s;
 }
 
-let currentTiktokStatusFilter = '';
+let currentTiktokFilter = 'need_confirm';
 
 async function loadTiktokPosts() {
-  const url = currentTiktokStatusFilter ? `/api/tiktok/posts?status=${currentTiktokStatusFilter}` : '/api/tiktok/posts';
+  const isNeedConfirm = currentTiktokFilter === 'need_confirm';
+  const statusParam = isNeedConfirm ? 'published' : currentTiktokFilter;
+  const url = statusParam ? `/api/tiktok/posts?status=${statusParam}` : '/api/tiktok/posts';
   const res = await fetch(url);
-  const posts = await res.json();
+  let posts = await res.json();
+  if (isNeedConfirm) posts = posts.filter((p) => !p.confirmed);
   renderTiktokPostsTable(posts);
+  updateTiktokUnconfirmedBadge();
 }
 
 function renderTiktokPostsTable(posts) {
@@ -514,7 +518,14 @@ function renderTiktokPostsTable(posts) {
   tbody.innerHTML =
     posts
       .map((post) => {
-        const actions = post.status === 'pending' ? `<button data-id="${post.id}" class="cancelTiktokPost">Huỷ</button>` : '';
+        let actions = '';
+        if (post.status === 'pending') {
+          actions = `<button data-id="${post.id}" class="cancelTiktokPost">Huỷ</button>`;
+        } else if (post.status === 'published' && !post.confirmed) {
+          actions = `<button data-id="${post.id}" class="confirmTiktokPost primary">✅ Đã bấm Đăng trên TikTok</button>`;
+        } else if (post.confirmed) {
+          actions = `<small style="color:var(--success)">✅ Đã đăng lúc ${formatDate(post.confirmed_at)}</small>`;
+        }
         return `<tr>
         <td>${escapeHtml(post.account_name)}</td>
         <td class="content-cell"><span class="content-text">${escapeHtml(post.video_path)}</span></td>
@@ -523,7 +534,7 @@ function renderTiktokPostsTable(posts) {
         <td>${actions}</td>
       </tr>`;
       })
-      .join('') || '<tr><td colspan="5">Chưa có video nào được lên lịch.</td></tr>';
+      .join('') || '<tr><td colspan="5">Không có video nào ở mục này.</td></tr>';
 
   tbody.querySelectorAll('.content-text').forEach((el) => el.addEventListener('click', () => el.classList.toggle('expanded')));
   tbody.querySelectorAll('.cancelTiktokPost').forEach((btn) =>
@@ -533,13 +544,31 @@ function renderTiktokPostsTable(posts) {
       loadTiktokPosts();
     })
   );
+  tbody.querySelectorAll('.confirmTiktokPost').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      await fetch(`/api/tiktok/posts/${btn.dataset.id}/confirm`, { method: 'PATCH' });
+      loadTiktokPosts();
+    })
+  );
+}
+
+async function updateTiktokUnconfirmedBadge() {
+  const res = await fetch('/api/tiktok/posts/unconfirmed-count');
+  const { count } = await res.json();
+  const badge = $('#tiktokUnconfirmedBadge');
+  if (count > 0) {
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 document.querySelectorAll('.ttab').forEach((tab) =>
   tab.addEventListener('click', () => {
     document.querySelectorAll('.ttab').forEach((t) => t.classList.remove('active'));
     tab.classList.add('active');
-    currentTiktokStatusFilter = tab.dataset.tiktokStatus;
+    currentTiktokFilter = tab.dataset.tiktokFilter;
     loadTiktokPosts();
   })
 );

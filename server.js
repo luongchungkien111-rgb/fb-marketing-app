@@ -380,6 +380,22 @@ app.delete('/api/tiktok/posts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Danh dau 1 video (da vao Inbox) la nguoi dung da tu mo app TikTok bam
+// "Dang" xong - dung cho checklist "Can dang hom nay" tren giao dien.
+app.patch('/api/tiktok/posts/:id/confirm', (req, res) => {
+  const post = db.getTiktokPostById(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
+  if (post.status !== 'published') {
+    return res.status(400).json({ error: 'Chi xac nhan duoc video da vao Inbox (status=published)' });
+  }
+  const updated = db.markTiktokPostConfirmed(req.params.id);
+  res.json({ ok: true, post: updated });
+});
+
+app.get('/api/tiktok/posts/unconfirmed-count', (req, res) => {
+  res.json({ count: db.countUnconfirmedTiktokPosts() });
+});
+
 // Nhap lich hang loat tu file CSV (cot: tiktok_account_id,date,time,video_path).
 // video_path la duong dan file tren chinh may dang chay server (giong ben Facebook).
 // date dang YYYY-MM-DD, time dang HH:MM (gio Viet Nam, UTC+7).
@@ -461,12 +477,23 @@ app.get('/api/tiktok/posts/export', (req, res) => {
       time,
       video_path: p.video_path,
       status: TIKTOK_STATUS_LABEL_VI[p.status] || p.status,
+      da_bam_dang_thu_cong: p.confirmed ? 'Rồi' : (p.status === 'published' ? 'Chưa' : ''),
       publish_id: p.publish_id || '',
       error: p.error || '',
     };
   });
 
-  const csv = toCsv(rows, ['tiktok_account_id', 'account_name', 'date', 'time', 'video_path', 'status', 'publish_id', 'error']);
+  const csv = toCsv(rows, [
+    'tiktok_account_id',
+    'account_name',
+    'date',
+    'time',
+    'video_path',
+    'status',
+    'da_bam_dang_thu_cong',
+    'publish_id',
+    'error',
+  ]);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="trang-thai-lich-dang-tiktok.csv"`);
   res.send('﻿' + csv);
