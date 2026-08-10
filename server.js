@@ -69,6 +69,7 @@ if (APP_PASSWORD) {
     if (req.path === '/login' || req.path === '/login.html') return next();
     if (req.path.startsWith('/webhook/')) return next(); // Facebook goi thang, khong co cookie dang nhap
     if (req.path === '/style.css' || req.path === '/app.js') return next(); // can de trang login tu hien dung dang, khong lo lo du lieu gi ca
+    if (req.path === '/terms.html' || req.path === '/privacy.html' || req.path.startsWith('/app-icon')) return next(); // trang cong khai bat buoc cho ho so TikTok Developer, khong chua du lieu rieng tu
     const cookies = parseCookies(req);
     if (cookies.session && validSessions.has(cookies.session)) return next();
     if (req.path.startsWith('/api/') || req.path.startsWith('/auth/')) {
