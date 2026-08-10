@@ -77,6 +77,43 @@ async function notifyTiktokReadyToPost({ postId, accountName, videoPath }) {
 }
 
 /**
+ * Bao khi 1 bai dang len Page thanh cong (khong phai loi).
+ */
+async function notifyPostPublished({ postId, pageName, postUrl }) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] Da dang bai #${postId} (Page: ${pageName}) thanh cong.`;
+  appendLog(line);
+
+  const link = postUrl ? `\n🔗 ${postUrl}` : '';
+  await Promise.all([
+    sendTelegram(`✅ <b>Đã đăng bài</b>\nPage: ${pageName}\nID: #${postId}${link}`),
+    sendWebhook({ type: 'post_published', text: `✅ Đã đăng bài trên "${pageName}" (id #${postId}).`, post_id: postId, page_name: pageName, post_url: postUrl, timestamp }),
+  ]);
+}
+
+/**
+ * Bao khi co 1 tin nhan Messenger moi tu khach gui toi Page (moi tin, khong
+ * rieng tin gay gat - xem notifyUrgentMessage o duoi de phan biet muc do khan).
+ */
+async function notifyNewMessage({ pageName, messageText, senderName }) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] Tin nhan moi - Page "${pageName}": "${senderName}" nhan: "${messageText}"`;
+  appendLog(line);
+
+  await Promise.all([
+    sendTelegram(`💬 <b>Tin nhắn mới</b>\nPage: ${pageName}\nKhách: ${senderName}\nTin nhắn: "${messageText}"`),
+    sendWebhook({
+      type: 'new_message',
+      text: `💬 "${senderName}" nhắn tin tới Page "${pageName}": "${messageText}"`,
+      page_name: pageName,
+      message_text: messageText,
+      sender_name: senderName,
+      timestamp,
+    }),
+  ]);
+}
+
+/**
  * Canh bao khi AI phat hien 1 binh luan khach hang buc/phan nan gay gat,
  * can nguoi that vao xu ly ngay (khong the giao het cho AI tu tra loi).
  */
@@ -128,4 +165,4 @@ async function notifyUrgentMessage({ pageName, messageText, senderName, replyDra
   ]);
 }
 
-module.exports = { notifyFailure, notifyTiktokReadyToPost, notifyUrgentComment, notifyUrgentMessage };
+module.exports = { notifyFailure, notifyTiktokReadyToPost, notifyPostPublished, notifyNewMessage, notifyUrgentComment, notifyUrgentMessage };

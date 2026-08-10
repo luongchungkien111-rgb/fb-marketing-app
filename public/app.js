@@ -360,6 +360,8 @@ function renderPostsTable(allPosts) {
         const actions =
           post.status === 'pending'
             ? `<button data-id="${post.id}" class="editPost">Sửa</button> <button data-id="${post.id}" class="cancelPost">Huỷ</button>`
+            : post.status === 'failed'
+            ? `<button data-id="${post.id}" class="retryPost">🔄 Thử lại</button>`
             : '';
         const insights = post.insights
           ? ` <small>👍${post.insights.likes ?? 0} 💬${post.insights.comments ?? 0} 🔁${post.insights.shares ?? 0}</small>`
@@ -388,6 +390,16 @@ function renderPostsTable(allPosts) {
   );
   tbody.querySelectorAll('.editPost').forEach((btn) =>
     btn.addEventListener('click', () => startEditPost(btn.dataset.id))
+  );
+  tbody.querySelectorAll('.retryPost').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      if (!(await customConfirm('Thử đăng lại bài này ngay bây giờ? Chỉ nên làm sau khi đã khắc phục nguyên nhân lỗi gốc (vd: đăng nhập lại Facebook để cấp quyền), nếu không bài sẽ lại lỗi tiếp.'))) return;
+      const res = await fetch(`/api/posts/${btn.dataset.id}/retry`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error);
+      loadPosts();
+      checkAlerts();
+    })
   );
 }
 
@@ -785,7 +797,15 @@ async function checkAlerts() {
   const banner = $('#alertBanner');
   if (failed.length > 0) {
     banner.style.display = 'flex';
-    banner.innerHTML = `<span>⚠️ Có <strong>${failed.length}</strong> bài đăng thất bại vĩnh viễn sau nhiều lần thử lại — kiểm tra ở tab "Lỗi" bên dưới.</span>`;
+    banner.innerHTML = `<span>⚠️ Có <strong>${failed.length}</strong> bài đăng thất bại vĩnh viễn sau nhiều lần thử lại — kiểm tra ở tab "Lỗi" bên dưới.</span> <button id="btnRetryAllFailed">🔄 Thử lại tất cả (${failed.length})</button>`;
+    $('#btnRetryAllFailed').addEventListener('click', async () => {
+      if (!(await customConfirm(`Thử đăng lại toàn bộ ${failed.length} bài đang Lỗi ngay bây giờ?\n\nChỉ nên làm sau khi đã khắc phục nguyên nhân lỗi gốc (vd: đăng nhập lại Facebook để cấp quyền) — nếu chưa, các bài sẽ lại lỗi tiếp.`))) return;
+      const r = await fetch('/api/posts/retry-failed', { method: 'POST' });
+      const data = await r.json();
+      alert(`Đã đưa ${data.count} bài trở lại hàng chờ, sẽ tự đăng lại trong vòng 1 phút tới.`);
+      loadPosts();
+      checkAlerts();
+    });
   } else {
     banner.style.display = 'none';
   }

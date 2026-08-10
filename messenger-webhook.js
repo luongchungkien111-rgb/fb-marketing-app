@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const { sendMessengerMessage, getMessengerUserProfile } = require('./facebook');
 const { analyzeMessage } = require('./ai-reply');
-const { notifyUrgentMessage } = require('./notify');
+const { notifyUrgentMessage, notifyNewMessage } = require('./notify');
 
 // Thong tin salon (khop voi content/update-page-info.js) - dung khi AI tra loi tin nhan
 const SALON_INFO = {
@@ -96,6 +96,7 @@ async function processIncomingMessage(event) {
   if (!saved) return; // tin nhan trung (Facebook gui lai webhook) - bo qua
 
   console.log(`[messenger-webhook] Tin nhan moi tren "${page.name}" tu "${senderName || senderId}": ${text.slice(0, 60)}`);
+  notifyNewMessage({ pageName: page.name, messageText: text, senderName: senderName || 'khách' });
 
   if (page.messenger_ai_enabled && process.env.GEMINI_API_KEY) {
     try {

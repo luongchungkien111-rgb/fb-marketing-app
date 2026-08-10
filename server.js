@@ -881,6 +881,43 @@ app.delete('/api/posts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Thu dang lai 1 bai dang o trang thai 'failed' (loi vinh vien sau 3 lan thu) -
+// dua ve 'pending' + gio dang = ngay bay gio, xoa het loi/retry_count cu de
+// scheduler (chay moi phut) nhat len va thu dang lai tu dau. Dung sau khi da
+// khac phuc nguyen nhan loi goc (vd: dang nhap lai Facebook de cap lai quyen).
+app.post('/api/posts/:id/retry', (req, res) => {
+  const post = db.getPostById(req.params.id);
+  if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
+  if (post.status !== 'failed') {
+    return res.status(400).json({ error: 'Chi thu lai duoc bai dang o trang thai Loi' });
+  }
+  const updated = db.updatePost(req.params.id, {
+    status: 'pending',
+    error: null,
+    retry_count: 0,
+    next_attempt_at: null,
+    scheduled_time: db.nowIso(),
+  });
+  res.json({ ok: true, post: updated });
+});
+
+// Thu dang lai TAT CA bai dang Loi cung luc (vd sau khi dang nhap lai Facebook
+// de cap quyen, muon day het ca loat bai loi vao hang doi lai mot lan thay vi
+// bam tung bai).
+app.post('/api/posts/retry-failed', (req, res) => {
+  const failed = db.listPosts('failed');
+  failed.forEach((p) => {
+    db.updatePost(p.id, {
+      status: 'pending',
+      error: null,
+      retry_count: 0,
+      next_attempt_at: null,
+      scheduled_time: db.nowIso(),
+    });
+  });
+  res.json({ ok: true, count: failed.length });
+});
+
 app.listen(PORT, () => {
   console.log(`Fb Marketing App dang chay tai http://localhost:${PORT}`);
   startScheduler();
