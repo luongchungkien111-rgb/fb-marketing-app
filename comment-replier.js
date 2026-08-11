@@ -9,6 +9,7 @@ const db = require('./db');
 const { getPostComments, replyToComment, hideComment } = require('./facebook');
 const { analyzeComment } = require('./ai-reply');
 const { notifyUrgentComment } = require('./notify');
+const { getFacebookPostingStatus } = require('./facebook-posting-control');
 
 const LOOKBACK_DAYS = 7; // chi quet binh luan tren bai dang trong 7 ngay gan day
 const STAGGER_MS = 2000;
@@ -25,6 +26,7 @@ function sleep(ms) {
 }
 
 async function scanAndReply() {
+  if (getFacebookPostingStatus().paused) return;
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 19).replace('T', ' ');
   const posts = db
     .listPosts('published')
