@@ -51,6 +51,19 @@ async function notifyFailure({ postId, pageName, error }) {
   ]);
 }
 
+async function notifyFacebookHealth({ ok, checked, failed, failures = [] }) {
+  const timestamp = new Date().toISOString();
+  const details = failures.slice(0, 10).map((item) => `- ${item.page_name}: ${item.reason}`).join('\n');
+  const text = ok
+    ? `✅ <b>Facebook hoạt động bình thường</b>\nĐã kiểm tra: ${checked} Page.`
+    : `⛔ <b>Đã dừng lịch Facebook an toàn</b>\nKiểm tra: ${checked} Page\nLỗi: ${failed} Page\n${details}`;
+  appendLog(`[${timestamp}] Facebook health: ok=${ok}, checked=${checked}, failed=${failed}`);
+  await Promise.all([
+    sendTelegram(text),
+    sendWebhook({ type: 'facebook_health', ok, checked, failed, failures, timestamp }),
+  ]);
+}
+
 /**
  * Bao ngay khi 1 video vua duoc dua vao Inbox nhap cua 1 tai khoan TikTok -
  * nhac nguoi dung mo app TikTok bam "Dang" som (draft se tu bien mat sau vai
@@ -165,4 +178,4 @@ async function notifyUrgentMessage({ pageName, messageText, senderName, replyDra
   ]);
 }
 
-module.exports = { notifyFailure, notifyTiktokReadyToPost, notifyPostPublished, notifyNewMessage, notifyUrgentComment, notifyUrgentMessage };
+module.exports = { notifyFailure, notifyFacebookHealth, notifyTiktokReadyToPost, notifyPostPublished, notifyNewMessage, notifyUrgentComment, notifyUrgentMessage };

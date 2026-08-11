@@ -35,6 +35,17 @@ function classifyFacebookAuthError(error) {
   return null;
 }
 
+function classifyFacebookOperationalError(error) {
+  const meta = error?.response?.data?.error || {};
+  const authReason = classifyFacebookAuthError(error);
+  if (authReason) return { kind: 'auth', reason: authReason };
+  if ([4, 17, 32, 613].includes(meta.code)) return { kind: 'rate_limit', reason: 'facebook_rate_limit', retryAfterMinutes: 60 };
+  if ([1, 2].includes(meta.code) || error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT') {
+    return { kind: 'transient', reason: 'temporary_network_or_meta_error' };
+  }
+  return { kind: 'permanent', reason: 'content_or_request_error' };
+}
+
 function getFacebookBatchLimit() {
   const configured = Number.parseInt(process.env.FACEBOOK_MAX_POSTS_PER_RUN, 10);
   return Number.isInteger(configured) && configured > 0 ? configured : 1;
@@ -99,12 +110,19 @@ function clearFacebookPostingPause() {
   return getFacebookPostingStatus();
 }
 
+function recordFacebookHealth(summary) {
+  const current = readState();
+  writeState({ ...current, last_health_check: new Date().toISOString(), health: summary });
+}
+
 module.exports = {
   PAUSED_MESSAGE,
   classifyFacebookAuthError,
+  classifyFacebookOperationalError,
   clearFacebookPostingPause,
   getFacebookBatchLimit,
   getFacebookPostingStatus,
   pauseIfFacebookAuthFailed,
+  recordFacebookHealth,
   selectFacebookPostsForRun,
 };

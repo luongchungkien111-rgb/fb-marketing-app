@@ -3,9 +3,11 @@ const db = require('./db');
 const { publishPost } = require('./facebook');
 const tiktok = require('./tiktok');
 const { getFreshTiktokAccessToken } = require('./tiktok-token');
-const { notifyFailure, notifyTiktokReadyToPost, notifyPostPublished } = require('./notify');
+const { notifyFailure, notifyFacebookHealth, notifyTiktokReadyToPost, notifyPostPublished } = require('./notify');
+const { checkFacebookPages } = require('./facebook-health');
 const {
   PAUSED_MESSAGE,
+  classifyFacebookOperationalError,
   getFacebookBatchLimit,
   getFacebookPostingStatus,
   pauseIfFacebookAuthFailed,
@@ -17,6 +19,7 @@ const RETRY_BACKOFF_MINUTES = [5, 15, 45]; // lan 1: cho 5 phut, lan 2: 15 phut,
 const STAGGER_MS = 4000; // giãn 4 giay giua moi lan goi Graph API de tranh burst request
 const TIKTOK_STAGGER_MS = 4000; // giãn 4 giay giua moi lan upload TikTok, cung ly do
 let facebookRunActive = false;
+let lastFacebookPreflightAt = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,6 +44,15 @@ function startScheduler() {
       const allDue = db.getDuePosts();
       const due = selectFacebookPostsForRun(allDue);
       if (!due.length) return;
+
+      if (Date.now() - lastFacebookPreflightAt > 6 * 60 * 60 * 1000) {
+        const health = await checkFacebookPages();
+        lastFacebookPreflightAt = Date.now();
+        if (!health.ok) {
+          await notifyFacebookHealth(health);
+          return;
+        }
+      }
 
       console.log(
         `[scheduler] ${allDue.length} bai den gio; xu ly toi da ${getFacebookBatchLimit()} bai trong luot nay ` +
@@ -70,6 +82,7 @@ function startScheduler() {
           console.log(`[scheduler] Da dang bai #${post.id} len Page "${post.page_name}" (fb id: ${fbPostId})`);
           notifyPostPublished({ postId: post.id, pageName: post.page_name, postUrl: result.post_url });
         } catch (err) {
+          const errorClass = classifyFacebookOperationalError(err);
           const circuit = pauseIfFacebookAuthFailed(err);
           if (circuit.tripped) {
             db.updatePost(post.id, { error: PAUSED_MESSAGE, next_attempt_at: null });
@@ -78,6 +91,21 @@ function startScheduler() {
           }
           const msg = err.response?.data?.error?.message || err.message;
           const retryCount = (post.retry_count || 0) + 1;
+
+          if (errorClass.kind === 'rate_limit') {
+            db.updatePost(post.id, {
+              next_attempt_at: db.addMinutesIso(errorClass.retryAfterMinutes),
+              error: `(Facebook giới hạn tạm thời; chờ ${errorClass.retryAfterMinutes} phút) ${msg}`,
+            });
+            console.warn(`[scheduler] Facebook rate limit; dung luot nay va cho ${errorClass.retryAfterMinutes} phut.`);
+            break;
+          }
+
+          if (errorClass.kind === 'permanent') {
+            db.updatePost(post.id, { status: 'failed', error: msg, next_attempt_at: null });
+            notifyFailure({ postId: post.id, pageName: post.page_name, error: msg });
+            continue;
+          }
 
           if (retryCount <= MAX_RETRIES) {
             const backoffMin = RETRY_BACKOFF_MINUTES[retryCount - 1] || 45;
@@ -102,6 +130,12 @@ function startScheduler() {
     } finally {
       facebookRunActive = false;
     }
+  });
+
+  cron.schedule('30 5 * * *', async () => {
+    const health = await checkFacebookPages();
+    lastFacebookPreflightAt = Date.now();
+    await notifyFacebookHealth(health);
   });
 
   cron.schedule('* * * * *', async () => {

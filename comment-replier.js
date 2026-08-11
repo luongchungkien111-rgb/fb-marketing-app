@@ -9,9 +9,10 @@ const db = require('./db');
 const { getPostComments, replyToComment, hideComment } = require('./facebook');
 const { analyzeComment } = require('./ai-reply');
 const { notifyUrgentComment } = require('./notify');
-const { getFacebookPostingStatus } = require('./facebook-posting-control');
+const { getFacebookPostingStatus, pauseIfFacebookAuthFailed } = require('./facebook-posting-control');
 
-const LOOKBACK_DAYS = 7; // chi quet binh luan tren bai dang trong 7 ngay gan day
+const LOOKBACK_DAYS = Number.parseInt(process.env.AUTO_REPLY_LOOKBACK_DAYS || '3', 10);
+const MAX_POSTS_PER_SCAN = Number.parseInt(process.env.AUTO_REPLY_MAX_POSTS || '20', 10);
 const STAGGER_MS = 2000;
 
 // Thong tin salon (khop voi phan "About" da cap nhat qua content/update-page-info.js)
@@ -30,7 +31,8 @@ async function scanAndReply() {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString().slice(0, 19).replace('T', ' ');
   const posts = db
     .listPosts('published')
-    .filter((p) => p.fb_post_id && p.scheduled_time >= cutoff);
+    .filter((p) => p.fb_post_id && p.scheduled_time >= cutoff)
+    .slice(-MAX_POSTS_PER_SCAN);
 
   if (!posts.length) return;
   console.log(`[auto-reply] Quet binh luan tren ${posts.length} bai gan day...`);
@@ -46,6 +48,7 @@ async function scanAndReply() {
     try {
       comments = await getPostComments(post.fb_post_id, page.access_token);
     } catch (err) {
+      pauseIfFacebookAuthFailed(err);
       // co the thieu quyen pages_read_user_content tren page nay - bo qua, khong dung ca vong quet
       continue;
     }
@@ -118,10 +121,12 @@ function startCommentReplier() {
     console.warn('[auto-reply] AUTO_REPLY_ENABLED=true nhung thieu GEMINI_API_KEY - tinh nang se khong hoat dong.');
     return;
   }
-  cron.schedule('*/10 * * * *', () => {
+  const interval = Math.max(15, Number.parseInt(process.env.AUTO_REPLY_INTERVAL_MINUTES || '60', 10));
+  const expression = interval >= 60 ? '0 * * * *' : `*/${interval} * * * *`;
+  cron.schedule(expression, () => {
     scanAndReply().catch((err) => console.error('[auto-reply] Loi vong quet:', err.message));
   });
-  console.log('[auto-reply] Da BAT - quet binh luan moi moi 10 phut (tra loi + an spam + canh bao khan).');
+  console.log(`[auto-reply] Da BAT - quet toi da ${MAX_POSTS_PER_SCAN} bai moi ${interval} phut.`);
 }
 
 module.exports = { startCommentReplier, scanAndReply };

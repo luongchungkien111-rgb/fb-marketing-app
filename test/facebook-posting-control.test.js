@@ -57,3 +57,10 @@ test('selects oldest posts and at most one post per Page', () => {
   ];
   assert.deepEqual(control.selectFacebookPostsForRun(due, 2).map((post) => post.id), [1, 2]);
 });
+
+test('classifies Facebook rate limits without treating them as auth failures', () => {
+  const control = freshControl();
+  const result = control.classifyFacebookOperationalError({ response: { data: { error: { code: 4, message: 'Application request limit reached' } } } });
+  assert.equal(result.kind, 'rate_limit');
+  assert.equal(result.retryAfterMinutes, 60);
+});

@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "facebook:preflight": "node scripts/facebook-graph-preflight.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

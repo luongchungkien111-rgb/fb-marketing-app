@@ -6,6 +6,38 @@ const { compressIfNeeded } = require('./image-processor');
 const GRAPH_VERSION = process.env.GRAPH_API_VERSION || 'v19.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+function toAbsoluteFacebookUrl(url) {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `https://www.facebook.com${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+function buildPostFallbackUrl({ pageId, objectId, postType }) {
+  if (postType === 'video') return `https://www.facebook.com/reel/${objectId}/`;
+  const parts = String(objectId || '').split('_');
+  if (parts.length === 2) return `https://www.facebook.com/${pageId}/posts/${parts[1]}`;
+  return `https://www.facebook.com/${objectId}`;
+}
+
+async function addCanonicalPostUrl({ data, pageId, accessToken, postType }) {
+  const objectId = data.post_id || data.id;
+  const fallbackUrl = buildPostFallbackUrl({ pageId, objectId, postType });
+  try {
+    const permalink = await axios.get(`${GRAPH_BASE}/${objectId}`, {
+      params: { fields: 'permalink_url', access_token: accessToken },
+      timeout: 30000,
+    });
+    return {
+      ...data,
+      post_type: postType,
+      post_url: toAbsoluteFacebookUrl(permalink.data.permalink_url) || fallbackUrl,
+    };
+  } catch {
+    // Dang bai da thanh cong; loi lay permalink khong duoc lam bai bi thu lai/trung.
+    return { ...data, post_type: postType, post_url: fallbackUrl };
+  }
+}
+
 /**
  * Kiem tra Page Access Token va lay ten Page (dung khi them Page moi).
  */
@@ -78,6 +110,22 @@ async function getUserPages(userAccessToken) {
   return res.data.data; // [{ id, name, access_token }, ...]
 }
 
+async function getGrantedPermissions(userAccessToken) {
+  const res = await axios.get(`${GRAPH_BASE}/me/permissions`, {
+    params: { access_token: userAccessToken },
+    timeout: 30000,
+  });
+  return res.data.data.filter((p) => p.status === 'granted').map((p) => p.permission);
+}
+
+async function debugAccessToken(accessToken, appId, appSecret) {
+  const res = await axios.get(`${GRAPH_BASE}/debug_token`, {
+    params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
+    timeout: 30000,
+  });
+  return res.data.data;
+}
+
 /**
  * Dang bai len mot Facebook Page ngay lap tuc. Uu tien video > anh > chi chu.
  * - videoPath: duong dan file video local tren may dang chay server (tuy chon)
@@ -102,26 +150,14 @@ async function publishPost({ pageId, accessToken, message, imagePath, imageUrl, 
       // dang upload binh thuong o phia Facebook.
       timeout: 10 * 60 * 1000,
     });
-    return {
-      ...res.data,
-      post_type: 'video',
-      post_url: res.data.post_id
-        ? `https://www.facebook.com/${res.data.post_id}`
-        : `https://www.facebook.com/${pageId}/videos/${res.data.id}`,
-    };
+    return addCanonicalPostUrl({ data: res.data, pageId, accessToken, postType: 'video' });
   }
 
   if (videoUrl) {
     const res = await axios.post(`${GRAPH_BASE}/${pageId}/videos`, null, {
       params: { file_url: videoUrl, description: message || '', access_token: accessToken },
     });
-    return {
-      ...res.data,
-      post_type: 'video',
-      post_url: res.data.post_id
-        ? `https://www.facebook.com/${res.data.post_id}`
-        : `https://www.facebook.com/${pageId}/videos/${res.data.id}`,
-    };
+    return addCanonicalPostUrl({ data: res.data, pageId, accessToken, postType: 'video' });
   }
 
   if (imagePath && fs.existsSync(imagePath)) {
@@ -136,22 +172,20 @@ async function publishPost({ pageId, accessToken, message, imagePath, imageUrl, 
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
     });
-    const postId = res.data.post_id || res.data.id;
-    return { ...res.data, post_type: 'photo', post_url: `https://www.facebook.com/${postId}` };
+    return addCanonicalPostUrl({ data: res.data, pageId, accessToken, postType: 'photo' });
   }
 
   if (imageUrl) {
     const res = await axios.post(`${GRAPH_BASE}/${pageId}/photos`, null, {
       params: { url: imageUrl, caption: message || '', access_token: accessToken },
     });
-    const postId = res.data.post_id || res.data.id;
-    return { ...res.data, post_type: 'photo', post_url: `https://www.facebook.com/${postId}` };
+    return addCanonicalPostUrl({ data: res.data, pageId, accessToken, postType: 'photo' });
   }
 
   const res = await axios.post(`${GRAPH_BASE}/${pageId}/feed`, null, {
     params: { message: message || '', access_token: accessToken },
   });
-  return { ...res.data, post_type: 'text', post_url: `https://www.facebook.com/${res.data.id}` };
+  return addCanonicalPostUrl({ data: res.data, pageId, accessToken, postType: 'text' });
 }
 
 /**
@@ -372,6 +406,9 @@ async function subscribePageToWebhook(pageId, accessToken) {
 }
 
 module.exports = {
+  addCanonicalPostUrl,
+  buildPostFallbackUrl,
+  toAbsoluteFacebookUrl,
   verifyPage,
   getPageProfile,
   getPageFeed,
@@ -390,6 +427,8 @@ module.exports = {
   exchangeCodeForUserToken,
   getLongLivedUserToken,
   getUserPages,
+  getGrantedPermissions,
+  debugAccessToken,
   getPostInsights,
   GRAPH_BASE,
 };

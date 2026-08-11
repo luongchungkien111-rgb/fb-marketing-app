@@ -12,6 +12,10 @@ module.exports = {
       max_memory_restart: '300M',
       env: {
         NODE_ENV: 'production',
+        // Meta da mo lai App va cac Page da duoc kiem tra quyen truy cap.
+        FACEBOOK_POSTING_PAUSED: 'false',
+        // Khoi dong lai an toan: moi phut chi xu ly toi da 1 bai Facebook.
+        FACEBOOK_MAX_POSTS_PER_RUN: '1',
       },
       error_file: './data/pm2-error.log',
       out_file: './data/pm2-out.log',

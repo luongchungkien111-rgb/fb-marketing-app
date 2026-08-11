@@ -697,8 +697,14 @@ async function submitPost(publishNow) {
     form.append('scheduled_time', utc);
   }
 
-  const res = await fetch('/api/posts', { method: 'POST', body: form });
-  const data = await res.json();
+  let res = await fetch('/api/posts', { method: 'POST', body: form });
+  let data = await res.json();
+  if (res.status === 409 && data.code === 'DUPLICATE_CONTENT_WARNING') {
+    if (!(await customConfirm(`${data.error}\n\nBạn vẫn muốn tiếp tục đăng/lên lịch?`))) return;
+    form.set('allow_duplicate', 'true');
+    res = await fetch('/api/posts', { method: 'POST', body: form });
+    data = await res.json();
+  }
   if (!res.ok) return alert(data.error);
 
   $('#postContent').value = '';

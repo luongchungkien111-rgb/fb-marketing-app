@@ -12,6 +12,7 @@ const {
   exchangeCodeForUserToken,
   getLongLivedUserToken,
   getUserPages,
+  getGrantedPermissions,
   getPostInsights,
   getPageProfile,
   getPageFeed,
@@ -26,6 +27,9 @@ const { startBackupSchedule } = require('./backup');
 const { startCommentReplier } = require('./comment-replier');
 const { parseCsv, toCsv } = require('./csv');
 const messengerWebhook = require('./messenger-webhook');
+const { findDuplicateRisk } = require('./content-guard');
+const { checkFacebookPages } = require('./facebook-health');
+const { notifyFacebookHealth } = require('./notify');
 const {
   PAUSED_MESSAGE,
   clearFacebookPostingPause,
@@ -137,6 +141,9 @@ app.get('/auth/facebook/callback', async (req, res) => {
       code,
     });
     const longToken = await getLongLivedUserToken({ appId: APP_ID, appSecret: APP_SECRET, shortLivedToken: shortToken });
+    const grantedPermissions = await getGrantedPermissions(longToken);
+    const requiredPermissions = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'];
+    const missingPermissions = requiredPermissions.filter((permission) => !grantedPermissions.includes(permission));
     const pages = await getUserPages(longToken);
     if (!pages.length) {
       return res.send(
@@ -149,11 +156,15 @@ app.get('/auth/facebook/callback', async (req, res) => {
     const { addedCount, updatedCount } = db.upsertPages(
       pages.map((p) => ({ name: p.name, page_id: p.id, access_token: p.access_token }))
     );
-    if (missingPageCount === 0) clearFacebookPostingPause();
+    if (missingPageCount === 0 && missingPermissions.length === 0) {
+      clearFacebookPostingPause();
+    } else {
+      pauseIfFacebookAuthFailed({ response: { data: { error: { code: 200, message: 'Permission(s) must be granted before impersonating a user page.' } } } });
+    }
     res.send(
-      missingPageCount === 0
+      missingPageCount === 0 && missingPermissions.length === 0
         ? `<p>Đã kết nối lại thành công ${pages.length} Fanpage (thêm mới ${addedCount}, cập nhật ${updatedCount}). Cầu dao Facebook đã được mở lại.</p><a href="/">Quay lại phần mềm</a>`
-        : `<p>Đã cập nhật ${pages.length} Fanpage nhưng còn thiếu quyền của ${missingPageCount} Page đang có trong phần mềm. Lịch Facebook vẫn tạm dừng để tránh lỗi hàng loạt. Hãy đăng nhập lại và chọn đủ Page, hoặc xóa Page không còn quản lý.</p><a href="/">Quay lại phần mềm</a>`
+        : `<p>Đã cập nhật ${pages.length} Fanpage nhưng kết nối chưa đạt yêu cầu: thiếu ${missingPageCount} Page; thiếu quyền ${missingPermissions.join(', ') || '0'}. Lịch Facebook vẫn tạm dừng. Hãy đăng nhập lại và chọn đủ Page/quyền, hoặc xóa Page không còn quản lý.</p><a href="/">Quay lại phần mềm</a>`
     );
   } catch (err) {
     const msg = err.response?.data?.error?.message || err.message;
@@ -638,6 +649,12 @@ app.get('/api/facebook/posting-status', (req, res) => {
   res.json(getFacebookPostingStatus());
 });
 
+app.post('/api/facebook/health-check', async (req, res) => {
+  const result = await checkFacebookPages();
+  await notifyFacebookHealth(result);
+  res.status(result.ok ? 200 : 503).json(result);
+});
+
 app.get('/api/posts', (req, res) => {
   res.json(db.listPosts(req.query.status));
 });
@@ -910,6 +927,17 @@ app.delete('/api/posts/:id', (req, res) => {
 app.post('/api/posts/:id/retry', (req, res) => {
   if (getFacebookPostingStatus().paused) {
     return res.status(503).json({ error: PAUSED_MESSAGE, code: 'FACEBOOK_POSTING_PAUSED' });
+  }
+
+  const targetTime = publish_now === 'true' ? new Date().toISOString().slice(0, 19).replace('T', ' ') : scheduled_time;
+  const duplicateRisk = findDuplicateRisk(content, targetTime, db.listPosts());
+  if (duplicateRisk && req.body.allow_duplicate !== 'true') {
+    if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(409).json({
+      code: 'DUPLICATE_CONTENT_WARNING',
+      error: `Nội dung giống ${Math.round(duplicateRisk.similarity * 100)}% bài #${duplicateRisk.post_id} trên ${duplicateRisk.page_name}, trong khung 12 giờ.`,
+      duplicate: duplicateRisk,
+    });
   }
   const post = db.getPostById(req.params.id);
   if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
