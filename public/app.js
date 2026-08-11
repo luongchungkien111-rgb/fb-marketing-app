@@ -792,9 +792,23 @@ document.querySelectorAll('.tab').forEach((tab) =>
 );
 
 async function checkAlerts() {
-  const res = await fetch('/api/posts?status=failed');
-  const failed = await res.json();
+  const [failedRes, statusRes] = await Promise.all([
+    fetch('/api/posts?status=failed'),
+    fetch('/api/facebook/posting-status'),
+  ]);
+  const failed = await failedRes.json();
+  const postingStatus = await statusRes.json();
   const banner = $('#alertBanner');
+  const publishButton = $('#btnPublishNow');
+  publishButton.disabled = postingStatus.paused;
+  publishButton.title = postingStatus.paused ? postingStatus.message : '';
+
+  if (postingStatus.paused) {
+    banner.style.display = 'flex';
+    banner.innerHTML = `<span>⛔ <strong>Đăng Facebook đang tạm dừng an toàn.</strong> Kết nối Facebook đã mất hiệu lực. ${failed.length ? `Có ${failed.length} bài đang ở trạng thái Lỗi. ` : ''}Hàng đợi vẫn được giữ nguyên.</span> <a class="button" href="/auth/facebook">🔐 Kết nối lại Facebook</a>`;
+    return;
+  }
+
   if (failed.length > 0) {
     banner.style.display = 'flex';
     banner.innerHTML = `<span>⚠️ Có <strong>${failed.length}</strong> bài đăng thất bại vĩnh viễn sau nhiều lần thử lại — kiểm tra ở tab "Lỗi" bên dưới.</span> <button id="btnRetryAllFailed">🔄 Thử lại tất cả (${failed.length})</button>`;

@@ -26,6 +26,12 @@ const { startBackupSchedule } = require('./backup');
 const { startCommentReplier } = require('./comment-replier');
 const { parseCsv, toCsv } = require('./csv');
 const messengerWebhook = require('./messenger-webhook');
+const {
+  PAUSED_MESSAGE,
+  clearFacebookPostingPause,
+  getFacebookPostingStatus,
+  pauseIfFacebookAuthFailed,
+} = require('./facebook-posting-control');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -137,11 +143,17 @@ app.get('/auth/facebook/callback', async (req, res) => {
         '<p>Không tìm thấy Fanpage nào bạn quản lý (hoặc bạn chưa cấp đủ quyền). Hãy thử đăng nhập lại và chọn "Chỉnh sửa quyền truy cập" để cấp cho đúng Page.</p><a href="/">Quay lại</a>'
       );
     }
+    const configuredPageIds = new Set(db.listPages().map((p) => String(p.page_id)));
+    const returnedPageIds = new Set(pages.map((p) => String(p.id)));
+    const missingPageCount = [...configuredPageIds].filter((id) => !returnedPageIds.has(id)).length;
     const { addedCount, updatedCount } = db.upsertPages(
       pages.map((p) => ({ name: p.name, page_id: p.id, access_token: p.access_token }))
     );
+    if (missingPageCount === 0) clearFacebookPostingPause();
     res.send(
-      `<p>Đã lấy được ${pages.length} Fanpage (thêm mới ${addedCount}, cập nhật ${updatedCount}).</p><a href="/">Quay lại phần mềm</a>`
+      missingPageCount === 0
+        ? `<p>Đã kết nối lại thành công ${pages.length} Fanpage (thêm mới ${addedCount}, cập nhật ${updatedCount}). Cầu dao Facebook đã được mở lại.</p><a href="/">Quay lại phần mềm</a>`
+        : `<p>Đã cập nhật ${pages.length} Fanpage nhưng còn thiếu quyền của ${missingPageCount} Page đang có trong phần mềm. Lịch Facebook vẫn tạm dừng để tránh lỗi hàng loạt. Hãy đăng nhập lại và chọn đủ Page, hoặc xóa Page không còn quản lý.</p><a href="/">Quay lại phần mềm</a>`
     );
   } catch (err) {
     const msg = err.response?.data?.error?.message || err.message;
@@ -622,12 +634,20 @@ app.get('/api/pages/:id/preview', async (req, res) => {
 
 // ---------- POSTS ----------
 
+app.get('/api/facebook/posting-status', (req, res) => {
+  res.json(getFacebookPostingStatus());
+});
+
 app.get('/api/posts', (req, res) => {
   res.json(db.listPosts(req.query.status));
 });
 
 app.post('/api/posts', upload.single('image'), async (req, res) => {
   const { content, scheduled_time, publish_now } = req.body;
+  if (publish_now === 'true' && getFacebookPostingStatus().paused) {
+    if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(503).json({ error: PAUSED_MESSAGE, code: 'FACEBOOK_POSTING_PAUSED' });
+  }
   let page_row_ids;
   try {
     page_row_ids = JSON.parse(req.body.page_row_ids || '[]');
@@ -677,8 +697,10 @@ app.post('/api/posts', upload.single('image'), async (req, res) => {
         });
         results.push({ ok: true, page_row_id, page_name: page.name, id: post.id, fb_post_id: fbPostId });
       } catch (err) {
+        const circuit = pauseIfFacebookAuthFailed(err);
         const msg = err.response?.data?.error?.message || err.message;
         results.push({ ok: false, page_row_id, page_name: page.name, error: msg });
+        if (circuit.tripped) break;
       }
     } else {
       const post = db.addPost({ page_row_id, content, image_path: imagePath, scheduled_time, status: 'pending' });
@@ -886,6 +908,9 @@ app.delete('/api/posts/:id', (req, res) => {
 // scheduler (chay moi phut) nhat len va thu dang lai tu dau. Dung sau khi da
 // khac phuc nguyen nhan loi goc (vd: dang nhap lai Facebook de cap lai quyen).
 app.post('/api/posts/:id/retry', (req, res) => {
+  if (getFacebookPostingStatus().paused) {
+    return res.status(503).json({ error: PAUSED_MESSAGE, code: 'FACEBOOK_POSTING_PAUSED' });
+  }
   const post = db.getPostById(req.params.id);
   if (!post) return res.status(404).json({ error: 'Khong tim thay bai viet' });
   if (post.status !== 'failed') {
@@ -905,6 +930,9 @@ app.post('/api/posts/:id/retry', (req, res) => {
 // de cap quyen, muon day het ca loat bai loi vao hang doi lai mot lan thay vi
 // bam tung bai).
 app.post('/api/posts/retry-failed', (req, res) => {
+  if (getFacebookPostingStatus().paused) {
+    return res.status(503).json({ error: PAUSED_MESSAGE, code: 'FACEBOOK_POSTING_PAUSED' });
+  }
   const failed = db.listPosts('failed');
   failed.forEach((p) => {
     db.updatePost(p.id, {
