@@ -87,6 +87,17 @@ function startScheduler() {
           if (circuit.tripped) {
             db.updatePost(post.id, { error: PAUSED_MESSAGE, next_attempt_at: null });
             console.error(`[scheduler] Cau dao Facebook da ngat (${circuit.reason}). Tam dung toan bo luong dang, giu nguyen hang doi.`);
+            // Bao ngay qua Telegram luc cau dao MOI ngat (khong bao lai moi phut
+            // neu da dang tam dung tu truoc) - neu khong nguoi dung se khong biet
+            // gi cho toi khi tu hoi/kiem tra, nhu da xay ra thang 8/2026.
+            if (circuit.newlyPaused) {
+              notifyFacebookHealth({
+                ok: false,
+                checked: 1,
+                failed: 1,
+                failures: [{ page_name: post.page_name, reason: err.response?.data?.error?.message || err.message }],
+              }).catch(() => {});
+            }
             break;
           }
           const msg = err.response?.data?.error?.message || err.message;
