@@ -80,6 +80,7 @@ if (APP_PASSWORD) {
   app.use((req, res, next) => {
     if (req.path === '/login' || req.path === '/login.html') return next();
     if (req.path.startsWith('/webhook/')) return next(); // Facebook goi thang, khong co cookie dang nhap
+    if (req.path === '/api/public/tiktok-schedule' && process.env.CONTENT_DESK_SYNC_KEY && req.headers['x-sync-key'] === process.env.CONTENT_DESK_SYNC_KEY) return next(); // Content Desk goi server-to-server, dung khoa rieng thay vi cookie
     if (req.path === '/style.css' || req.path === '/app.js') return next(); // can de trang login tu hien dung dang, khong lo lo du lieu gi ca
     if (req.path === '/terms.html' || req.path === '/privacy.html' || req.path.startsWith('/app-icon')) return next(); // trang cong khai bat buoc cho ho so TikTok Developer, khong chua du lieu rieng tu
     if (/^\/tiktok[\w-]*\.txt$/.test(req.path)) return next(); // file xac minh so huu URL/domain cho TikTok Developer Portal (vd tiktokXXXX.txt)
@@ -319,6 +320,12 @@ app.patch('/api/pages/:id/group', (req, res) => {
 
 app.get('/api/tiktok/accounts', (req, res) => {
   res.json(db.listTiktokAccounts());
+});
+
+// Endpoint doc-only cho Content Desk (quan-ly-nick-tiktok) dong bo lich dang that -
+// bao ve bang X-Sync-Key rieng (xem middleware dang nhap o tren), khong dung cookie.
+app.get('/api/public/tiktok-schedule', (req, res) => {
+  res.json({ accounts: db.listTiktokAccounts(), posts: db.listTiktokPosts() });
 });
 
 app.delete('/api/tiktok/accounts/:id', (req, res) => {
